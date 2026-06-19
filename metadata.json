@@ -1,0 +1,6 @@
+{
+  "name": "Fashion For Every Home",
+  "description": "Premium Neumorphic E-Commerce platform for affordable Indian family fashion under ₹499.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Immersive UI - Neumorphic Custom Styles */
+.neu-flat {
+  background: #F0F2F5;
+  box-shadow: 8px 8px 16px #d1d9e6, -8px -8px 16px #ffffff;
+}
+
+.neu-inset {
+  background: #F0F2F5;
+  box-shadow: inset 4px 4px 8px #d1d9e6, inset -4px -4px 8px #ffffff;
+}
+
+.neu-button {
+  background: #F0F2F5;
+  box-shadow: 5px 5px 10px #d1d9e6, -5px -5px 10px #ffffff;
+  transition: all 0.2s ease;
+}
+
+.neu-button:active {
+  box-shadow: inset 3px 3px 6px #d1d9e6, inset -3px -3px 6px #ffffff;
+}
+
+.neu-accent {
+  background: #FB7185;
+  box-shadow: 5px 5px 10px #e26678, -5px -5px 10px #ff7c92;
+  color: white;
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Dark Mode Neumorphic adaptions */
+.dark .neu-flat {
+  background: #0f172a;
+  box-shadow: 6px 6px 12px #070b14, -6px -6px 12px #17233f;
+}
+
+.dark .neu-inset {
+  background: #0f172a;
+  box-shadow: inset 5px 5px 10px #070b14, inset -5px -5px 10px #17233f;
+}
+
+.dark .neu-button {
+  background: #0f172a;
+  box-shadow: 4px 4px 8px #070b14, -4px -4px 8px #17233f;
+  color: #e2e8f0;
+}
+
+.dark .neu-button:active {
+  box-shadow: inset 3px 3px 6px #070b14, inset -3px -3px 6px #17233f;
+}
+
+.dark .neu-accent {
+  background: #f43f5e;
+  box-shadow: 4px 4px 8px #9f1239, -4px -4px 8px #fda4af;
+}
+
+.dark .glass-pill {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Soft pulse glow animations */
+@keyframes softGlow {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 12px rgba(125, 211, 252, 0.6);
+  }
+}
+
+.text-soft-glow {
+  animation: softGlow 3s infinite ease-in-out;
+}
+
