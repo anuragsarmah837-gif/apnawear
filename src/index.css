@@ -1,106 +1,291 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Immersive UI - Neumorphic Custom Styles */
-.neu-flat {
-  background: #F0F2F5;
-  box-shadow: 8px 8px 16px #d1d9e6, -8px -8px 16px #ffffff;
+/* Base resets & theme styles */
+body {
+  background-color: #FFFFFF;
+  color: #111111;
+  font-family: var(--font-sans);
 }
 
-.neu-inset {
-  background: #F0F2F5;
-  box-shadow: inset 4px 4px 8px #d1d9e6, inset -4px -4px 8px #ffffff;
+/* Neo Brutalism utilities */
+.brutal-border-3 {
+  border: 3px solid #000000;
 }
 
-.neu-button {
-  background: #F0F2F5;
-  box-shadow: 5px 5px 10px #d1d9e6, -5px -5px 10px #ffffff;
-  transition: all 0.2s ease;
+.brutal-border-2 {
+  border: 2px solid #000000;
 }
 
-.neu-button:active {
-  box-shadow: inset 3px 3px 6px #d1d9e6, inset -3px -3px 6px #ffffff;
+.brutal-shadow {
+  box-shadow: 8px 8px 0px #000000;
 }
 
-.neu-accent {
-  background: #FB7185;
-  box-shadow: 5px 5px 10px #e26678, -5px -5px 10px #ff7c92;
-  color: white;
+.brutal-shadow-sm {
+  box-shadow: 4px 4px 0px #000000;
 }
 
-.glass-pill {
-  background: rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.brutal-shadow-lg {
+  box-shadow: 12px 12px 0px #000000;
 }
 
-/* Dark Mode Neumorphic adaptions */
-.dark .neu-flat {
-  background: #0f172a;
-  box-shadow: 6px 6px 12px #070b14, -6px -6px 12px #17233f;
+/* Tactile Brutal Card */
+.brutal-card {
+  border: 3px solid #000000;
+  box-shadow: 8px 8px 0px #000000;
+  border-radius: 12px;
+  background-color: #FFFFFF;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.dark .neu-inset {
-  background: #0f172a;
-  box-shadow: inset 5px 5px 10px #070b14, inset -5px -5px 10px #17233f;
+.brutal-card:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: 12px 12px 0px #000000;
 }
 
-.dark .neu-button {
-  background: #0f172a;
-  box-shadow: 4px 4px 8px #070b14, -4px -4px 8px #17233f;
-  color: #e2e8f0;
+.brutal-card-no-hover {
+  border: 3px solid #000000;
+  box-shadow: 8px 8px 0px #000000;
+  border-radius: 12px;
 }
 
-.dark .neu-button:active {
-  box-shadow: inset 3px 3px 6px #070b14, inset -3px -3px 6px #17233f;
+/* Pastel Card Variations */
+.brutal-card-white {
+  background-color: #FFFFFF;
 }
 
-.dark .neu-accent {
-  background: #f43f5e;
-  box-shadow: 4px 4px 8px #9f1239, -4px -4px 8px #fda4af;
+.brutal-card-yellow {
+  background-color: #FEF9C3; /* Pastel Yellow */
 }
 
-.dark .glass-pill {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+.brutal-card-blue {
+  background-color: #E0F2FE; /* Pastel Blue */
 }
 
-/* Custom Scrollbar */
+.brutal-card-green {
+  background-color: #DCFCE7; /* Pastel Green */
+}
+
+.brutal-card-pink {
+  background-color: #FCE7F3; /* Pastel Pink */
+}
+
+/* Tactile Brutal Button */
+.brutal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 24px;
+  border: 3px solid #000000;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0px #000000;
+  background-color: #FFD400; /* Primary Accent */
+  color: #111111;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.brutal-btn:hover {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0px #000000;
+}
+
+.brutal-btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0px 0px 0px #000000;
+}
+
+.brutal-btn-secondary {
+  background-color: #6D5EF9; /* Secondary Accent */
+  color: #FFFFFF;
+}
+
+.brutal-btn-offer {
+  background-color: #FF4D4F; /* Offer */
+  color: #FFFFFF;
+}
+
+.brutal-btn-success {
+  background-color: #00C853; /* Success */
+  color: #FFFFFF;
+}
+
+.brutal-btn-white {
+  background-color: #FFFFFF;
+  color: #111111;
+}
+
+/* Input boxes & dropdowns */
+.brutal-input {
+  border: 3px solid #000000;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background-color: #FFFFFF;
+  color: #111111;
+  font-family: var(--font-sans);
+  box-shadow: 4px 4px 0px #000000;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brutal-input:focus {
+  outline: none;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px #000000;
+}
+
+/* Stickers */
+.brutal-sticker {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 2px solid #000000;
+  box-shadow: 3px 3px 0px #000000;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  transform: rotate(-3deg);
+  background-color: #FFD400;
+  color: #111111;
+}
+
+.brutal-sticker-pink {
+  background-color: #FCE7F3;
+  transform: rotate(2deg);
+}
+
+.brutal-sticker-blue {
+  background-color: #E0F2FE;
+  transform: rotate(-1deg);
+}
+
+.brutal-sticker-green {
+  background-color: #DCFCE7;
+  transform: rotate(3deg);
+}
+
+/* Custom transitions and scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 99px;
+  background: #FFFFFF;
+  border-left: 3px solid #000000;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 99px;
+  background: #111111;
+  border: 3px solid #000000;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #FFD400;
 }
 
-/* Soft pulse glow animations */
-@keyframes softGlow {
+/* Custom micro-animations */
+@keyframes bounceSmall {
   0%, 100% {
-    opacity: 0.8;
+    transform: translateY(0);
   }
   50% {
-    opacity: 1;
-    text-shadow: 0 0 12px rgba(125, 211, 252, 0.6);
+    transform: translateY(-8px);
   }
 }
 
-.text-soft-glow {
-  animation: softGlow 3s infinite ease-in-out;
+.animate-bounce-brutal {
+  animation: bounceSmall 2s infinite ease-in-out;
 }
 
+.hover-bounce:hover {
+  animation: bounceSmall 0.6s ease-in-out;
+}
+
+@keyframes rotateSmall {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+.animate-rotate-brutal {
+  animation: rotateSmall 4s infinite ease-in-out;
+}
+
+/* Dark mode custom overrides for Neo Brutalism (High Contrast Neo Brutalism) */
+.dark body {
+  background-color: #111111;
+  color: #FFFFFF;
+}
+
+.dark .brutal-card {
+  background-color: #1a1a1a;
+  border-color: #FFFFFF;
+  box-shadow: 8px 8px 0px #FFFFFF;
+}
+
+.dark .brutal-card:hover {
+  box-shadow: 12px 12px 0px #FFFFFF;
+}
+
+.dark .brutal-card-no-hover {
+  background-color: #1a1a1a;
+  border-color: #FFFFFF;
+  box-shadow: 8px 8px 0px #FFFFFF;
+}
+
+.dark .brutal-btn {
+  border-color: #FFFFFF;
+  box-shadow: 4px 4px 0px #FFFFFF;
+}
+
+.dark .brutal-btn:hover {
+  box-shadow: 0px 0px 0px #FFFFFF;
+}
+
+.dark .brutal-btn:active {
+  box-shadow: 0px 0px 0px #FFFFFF;
+}
+
+.dark .brutal-input {
+  background-color: #1a1a1a;
+  color: #FFFFFF;
+  border-color: #FFFFFF;
+  box-shadow: 4px 4px 0px #FFFFFF;
+}
+
+.dark .brutal-input:focus {
+  box-shadow: 6px 6px 0px #FFFFFF;
+}
+
+.dark .brutal-border-3 {
+  border-color: #FFFFFF;
+}
+
+.dark .brutal-border-2 {
+  border-color: #FFFFFF;
+}
+
+.dark .brutal-shadow {
+  box-shadow: 8px 8px 0px #FFFFFF;
+}
+
+.dark .brutal-shadow-sm {
+  box-shadow: 4px 4px 0px #FFFFFF;
+}
+
+.dark .brutal-shadow-lg {
+  box-shadow: 12px 12px 0px #FFFFFF;
+}
