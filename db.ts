@@ -48,9 +48,16 @@ export async function initDb() {
         status VARCHAR(50) NOT NULL,
         address TEXT NOT NULL,
         payment_method VARCHAR(100) NOT NULL,
-        tracking_number VARCHAR(100)
+        tracking_number VARCHAR(100),
+        user_email VARCHAR(255)
       );
     `;
+
+    try {
+      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);`;
+    } catch (err) {
+      console.log("Migration log: user_email check complete.");
+    }
 
     // Create coupons table
     await sql`

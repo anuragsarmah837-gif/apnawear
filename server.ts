@@ -3,7 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { initDb, sql } from './db';
-import { verifyToken } from '@clerk/backend';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import { v2 as cloudinary } from 'cloudinary';
 
 dotenv.config();
@@ -15,8 +15,9 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Initialize Clerk secret key
+// Initialize Clerk secret key and backend client
 const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+const clerkClient = clerkSecretKey ? createClerkClient({ secretKey: clerkSecretKey }) : null;
 
 if (!clerkSecretKey) {
   console.warn("WARNING: CLERK_SECRET_KEY is missing. Clerk validation middleware will bypass in development.");
@@ -55,6 +56,35 @@ const checkAuth = async (req: express.Request, res: express.Response, next: expr
     next();
   } catch (err: any) {
     console.error('Clerk verification error:', err);
+    return res.status(401).json({ error: 'Unauthorized: Invalid session token' });
+  }
+};
+
+// Clerk admin role verification middleware wrapper
+const checkAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!clerkSecretKey) {
+    // Bypass in development if credentials are not configured
+    return next();
+  }
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: No session token provided' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const session = await verifyToken(token, { secretKey: clerkSecretKey });
+    (req as any).auth = session;
+    
+    if (clerkClient) {
+      const user = await clerkClient.users.getUser(session.sub);
+      const role = user.publicMetadata?.role || user.unsafeMetadata?.role;
+      if (role !== 'admin') {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+      }
+    }
+    next();
+  } catch (err: any) {
+    console.error('Clerk admin authorization check error:', err);
     return res.status(401).json({ error: 'Unauthorized: Invalid session token' });
   }
 };
@@ -99,7 +129,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-app.post('/api/products', checkAuth, async (req, res) => {
+app.post('/api/products', checkAdmin, async (req, res) => {
   if (!sql) {
     return res.status(503).json({ error: 'Database client not connected' });
   }
@@ -131,7 +161,7 @@ app.post('/api/products', checkAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/products/:id', checkAuth, async (req, res) => {
+app.delete('/api/products/:id', checkAdmin, async (req, res) => {
   if (!sql) {
     return res.status(503).json({ error: 'Database client not connected' });
   }
@@ -150,8 +180,14 @@ app.get('/api/orders', async (req, res) => {
   if (!sql) {
     return res.json([]);
   }
+  const { email } = req.query;
   try {
-    const result = await sql`SELECT * FROM orders ORDER BY date DESC`;
+    let result;
+    if (email) {
+      result = await sql`SELECT * FROM orders WHERE user_email = ${email} ORDER BY date DESC`;
+    } else {
+      result = await sql`SELECT * FROM orders ORDER BY date DESC`;
+    }
     const mappedOrders = result.map(o => ({
       id: o.id,
       date: o.date,
@@ -160,7 +196,8 @@ app.get('/api/orders', async (req, res) => {
       status: o.status,
       address: o.address,
       paymentMethod: o.payment_method,
-      trackingNumber: o.tracking_number || ''
+      trackingNumber: o.tracking_number || '',
+      userEmail: o.user_email || ''
     }));
     res.json(mappedOrders);
   } catch (error: any) {
@@ -176,8 +213,8 @@ app.post('/api/orders', async (req, res) => {
   const o = req.body;
   try {
     await sql`
-      INSERT INTO orders (id, date, items, total, status, address, payment_method, tracking_number)
-      VALUES (${o.id}, ${o.date}, ${JSON.stringify(o.items)}, ${o.total}, ${o.status}, ${o.address}, ${o.paymentMethod}, ${o.trackingNumber || ''})
+      INSERT INTO orders (id, date, items, total, status, address, payment_method, tracking_number, user_email)
+      VALUES (${o.id}, ${o.date}, ${JSON.stringify(o.items)}, ${o.total}, ${o.status}, ${o.address}, ${o.paymentMethod}, ${o.trackingNumber || ''}, ${o.userEmail || null})
     `;
     res.json({ success: true, order: o });
   } catch (error: any) {
@@ -186,7 +223,7 @@ app.post('/api/orders', async (req, res) => {
   }
 });
 
-app.put('/api/orders/:id/status', checkAuth, async (req, res) => {
+app.put('/api/orders/:id/status', checkAdmin, async (req, res) => {
   if (!sql) {
     return res.status(503).json({ error: 'Database client not connected' });
   }
@@ -215,7 +252,7 @@ app.get('/api/coupons', async (req, res) => {
   }
 });
 
-app.post('/api/coupons', checkAuth, async (req, res) => {
+app.post('/api/coupons', checkAdmin, async (req, res) => {
   if (!sql) {
     return res.status(503).json({ error: 'Database client not connected' });
   }
@@ -233,7 +270,7 @@ app.post('/api/coupons', checkAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/coupons/:code', checkAuth, async (req, res) => {
+app.delete('/api/coupons/:code', checkAdmin, async (req, res) => {
   if (!sql) {
     return res.status(503).json({ error: 'Database client not connected' });
   }
@@ -248,7 +285,7 @@ app.delete('/api/coupons/:code', checkAuth, async (req, res) => {
 });
 
 // 4. CLOUDINARY IMAGE UPLOAD
-app.post('/api/upload', checkAuth, async (req, res) => {
+app.post('/api/upload', checkAdmin, async (req, res) => {
   const { image } = req.body;
   if (!image) {
     return res.status(400).json({ error: 'No image data provided' });

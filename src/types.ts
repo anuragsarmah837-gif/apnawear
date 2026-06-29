@@ -39,6 +39,7 @@ export interface Order {
   address: string;
   paymentMethod: string;
   trackingNumber?: string;
+  userEmail?: string;
 }
 
 export interface CoinLog {

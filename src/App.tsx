@@ -4,7 +4,7 @@ import AdminPanel from './components/AdminPanel';
 import VirtualTryOn from './components/VirtualTryOn';
 import { DAILY_DEALS } from './data';
 import { Product, CartItem, Order } from './types';
-import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
 import { 
   ChevronRight, 
   Star, 
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  const { user, isSignedIn, isLoaded } = useUser();
   const [darkMode, setDarkMode] = React.useState(false);
   const [currentTab, setCurrentTab] = React.useState<string>('home');
   const [searchQuery, setSearchQuery] = React.useState<string>('');
@@ -194,7 +195,8 @@ export default function App() {
       status: 'Processing',
       address: deliveryAddress,
       paymentMethod: paymentOption === 'COD' ? 'Cash on Delivery (COD)' : 'Instant UPI payment model',
-      trackingNumber: 'TRK-GUW-' + (Math.floor(Math.random() * 90000) + 10000).toString()
+      trackingNumber: 'TRK-GUW-' + (Math.floor(Math.random() * 90000) + 10000).toString(),
+      userEmail: isSignedIn && user ? user.primaryEmailAddress?.emailAddress : undefined
     };
 
     try {
@@ -777,29 +779,131 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 8: OPERATOR CONTROL ADMIN BOARD */}
+        {/* TAB 8: OPERATOR CONTROL ADMIN BOARD / USER PORTAL */}
         {currentTab === 'admin' && (
           <div className="transition-all duration-200">
             <SignedIn>
-              <div className="flex justify-between items-center mb-6 p-4 bg-[#FFD400] text-black border-3 border-black shadow-[4px_4px_0_0_#000] font-mono text-xs">
-                <span className="font-black uppercase">🔐 CLERK PROTECTED ACCESS SESSION</span>
-                <UserButton afterSignOutUrl="/" />
-              </div>
-              <AdminPanel 
-                darkMode={darkMode}
-                products={products}
-                setProducts={setProducts}
-                orders={orders}
-                setOrders={setOrders}
-                couponCodes={couponCodes}
-                setCouponCodes={setCouponCodes}
-              />
+              {isSignedIn && user && (user.publicMetadata?.role === 'admin' || user.unsafeMetadata?.role === 'admin') ? (
+                <>
+                  <div className="flex justify-between items-center mb-6 p-4 bg-[#FFD400] text-black border-3 border-black shadow-[4px_4px_0_0_#000] font-mono text-xs">
+                    <span className="font-black uppercase">🔐 CLERK PROTECTED ACCESS SESSION (ADMIN)</span>
+                    <UserButton afterSignOutUrl="/" />
+                  </div>
+                  <AdminPanel 
+                    darkMode={darkMode}
+                    products={products}
+                    setProducts={setProducts}
+                    orders={orders}
+                    setOrders={setOrders}
+                    couponCodes={couponCodes}
+                    setCouponCodes={setCouponCodes}
+                  />
+                </>
+              ) : (
+                <div className="space-y-6">
+                  {/* User Profile Card */}
+                  <div className="p-6 border-3 border-black bg-white dark:bg-[#1a1a1a] shadow-[6px_6px_0_0_#000] dark:shadow-[6px_6px_0_0_#fff] text-left flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      {user?.imageUrl ? (
+                        <img src={user.imageUrl} alt="Profile" className="w-16 h-16 rounded-full border-3 border-black bg-white" />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full border-3 border-black bg-[#FFD400] flex items-center justify-center font-black text-2xl text-black">
+                          {user?.firstName?.charAt(0) || 'U'}
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-xl font-black uppercase tracking-tight text-[#111111] dark:text-white">
+                          {user?.fullName || 'Valued Customer'}
+                        </h3>
+                        <p className="text-xs font-mono text-gray-500 mt-1">
+                          EMAIL: {user?.primaryEmailAddress?.emailAddress}
+                        </p>
+                        <span className="mt-2 inline-block bg-[#DCFCE7] text-[#15803d] border border-[#15803d] text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider font-mono">
+                          Customer Account
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <UserButton afterSignOutUrl="/" />
+                      <span className="text-xs font-bold text-gray-500">Manage Account</span>
+                    </div>
+                  </div>
+
+                  {/* Customer Orders list */}
+                  <div className="border-3 border-black bg-[#FEF9C3] dark:bg-[#2d2a1b] p-6 shadow-[6px_6px_0_0_#000] dark:shadow-[6px_6px_0_0_#fff] text-left space-y-4 text-[#111111] dark:text-white">
+                    <div className="flex justify-between items-center pb-2 border-b-2 border-black dark:border-white/20">
+                      <h4 className="font-black text-lg uppercase tracking-tight">Your Order History</h4>
+                      <span className="text-xs font-mono font-bold bg-black text-white px-2 py-1">
+                        {orders.filter(o => o.userEmail === user?.primaryEmailAddress?.emailAddress).length} Orders Found
+                      </span>
+                    </div>
+
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                      {orders.filter(o => o.userEmail === user?.primaryEmailAddress?.emailAddress).length === 0 ? (
+                        <p className="text-xs font-bold italic opacity-60">You have not placed any orders yet. Start shopping to build your list!</p>
+                      ) : (
+                        orders
+                          .filter(o => o.userEmail === user?.primaryEmailAddress?.emailAddress)
+                          .map((order) => (
+                            <div key={order.id} className="p-4 border-2 border-black bg-white dark:bg-[#1a1a1a] text-black dark:text-white space-y-3">
+                              <div className="flex flex-wrap justify-between items-center gap-2 font-mono text-xs border-b border-black/10 dark:border-white/10 pb-2">
+                                <div>
+                                  <span className="font-black">ORDER ID: </span>
+                                  <span className="font-bold text-[#6D5EF9] dark:text-[#a59bfb]">{order.id}</span>
+                                </div>
+                                <div>
+                                  <span className="font-black">DATE: </span>
+                                  <span>{order.date}</span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                {order.items.map((item, itemIdx) => (
+                                  <div key={itemIdx} className="flex justify-between items-center text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <img src={item.image} alt={item.name} className="w-8 h-8 object-cover border border-black" />
+                                      <span className="font-bold line-clamp-1">{item.name} (x{item.quantity})</span>
+                                    </div>
+                                    <span className="font-mono font-bold">₹{item.price * item.quantity}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-black/10 dark:border-white/10">
+                                <div>
+                                  <span className="text-xs font-bold text-gray-500">Status: </span>
+                                  <span className={`px-2 py-0.5 border text-[10px] font-black uppercase font-mono ${
+                                    order.status === 'Processing' ? 'bg-[#FEF9C3] text-black border-yellow-600' :
+                                    order.status === 'Shipped' ? 'bg-[#E0F2FE] text-black border-blue-600' :
+                                    order.status === 'Delivered' ? 'bg-[#DCFCE7] text-black border-green-600' :
+                                    'bg-red-100 text-red-800 border-red-300'
+                                  }`}>
+                                    {order.status}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-xs font-bold opacity-60">Total: </span>
+                                  <span className="text-sm font-black text-[#FF4D4F]">₹{order.total}</span>
+                                </div>
+                              </div>
+                              {order.trackingNumber && (
+                                <div className="text-[10px] font-mono font-bold bg-[#E0F2FE] text-black p-2 border border-blue-300">
+                                  TRACKING NUMBER: {order.trackingNumber}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </SignedIn>
             <SignedOut>
               <div className="max-w-md mx-auto p-8 brutal-card-no-hover bg-[#FEF9C3] text-black text-center space-y-6 border-3 border-black shadow-[8px_8px_0_0_#000]">
-                <h3 className="text-2xl font-black uppercase tracking-tight">Admin Auth Required</h3>
+                <h3 className="text-2xl font-black uppercase tracking-tight">Login Required</h3>
                 <p className="text-xs font-bold opacity-80">
-                  Please log in with Clerk to access the operator control panel and inventory database.
+                  Please log in to view your profile, save your wishlist, and track your order history.
                 </p>
                 <div className="flex justify-center pt-2">
                   <SignInButton mode="modal">
