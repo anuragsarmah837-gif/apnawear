@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { initDb, sql } from './db';
@@ -40,26 +39,7 @@ if (cloudName && apiKey && apiSecret) {
   console.warn("WARNING: Cloudinary credentials missing. Image uploads will run in mock simulation mode.");
 }
 
-// Clerk token authentication middleware wrapper
-const checkAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (!clerkSecretKey) {
-    // Bypass authentication in local dev if credentials are not configured yet
-    return next();
-  }
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: No session token provided' });
-  }
-  const token = authHeader.split(' ')[1];
-  try {
-    const session = await verifyToken(token, { secretKey: clerkSecretKey });
-    (req as any).auth = session;
-    next();
-  } catch (err: any) {
-    console.error('Clerk verification error:', err);
-    return res.status(401).json({ error: 'Unauthorized: Invalid session token' });
-  }
-};
+// checkAuth removed as it is unused
 
 // Clerk admin role verification middleware wrapper
 const checkAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -91,7 +71,7 @@ const checkAdmin = async (req: express.Request, res: express.Response, next: exp
 };
 
 // API: Health probe
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', database: sql ? 'configured' : 'offline', time: new Date().toISOString() });
 });
 
@@ -100,7 +80,7 @@ app.get('/api/health', (req, res) => {
 // ----------------------------------------------------
 
 // 1. PRODUCTS
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', async (_req, res) => {
   if (!sql) {
     return res.json([]);
   }
@@ -242,7 +222,7 @@ app.put('/api/orders/:id/status', checkAdmin, async (req, res) => {
 });
 
 // 3. COUPONS
-app.get('/api/coupons', async (req, res) => {
+app.get('/api/coupons', async (_req, res) => {
   if (!sql) {
     return res.json([]);
   }
@@ -288,7 +268,7 @@ app.delete('/api/coupons/:code', checkAdmin, async (req, res) => {
 });
 
 // 4. REGIONAL STORIES
-app.get('/api/regional-stories', async (req, res) => {
+app.get('/api/regional-stories', async (_req, res) => {
   if (!sql) {
     return res.json([]);
   }
@@ -362,42 +342,11 @@ app.post('/api/upload', checkAdmin, async (req, res) => {
       });
       return res.json({ url: uploadResult.secure_url });
     } catch (error: any) {
-      console.error('Cloudinary upload error, attempting local fallback:', error);
+      console.error('Cloudinary upload error:', error);
+      return res.status(500).json({ error: 'Failed to upload image to Cloudinary' });
     }
-  }
-
-  // Local fallback storage
-  try {
-    const matches = image.match(/^data:image\/([A-Za-z0-9]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      if (image.startsWith('http://') || image.startsWith('https://') || image.startsWith('/')) {
-        return res.json({ url: image });
-      }
-      return res.status(400).json({ error: 'Invalid image format for upload' });
-    }
-
-    const ext = matches[1];
-    const base64Data = matches[2];
-    const buffer = Buffer.from(base64Data, 'base64');
-    
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-    
-    const fileName = `upload-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
-    const filePath = path.join(uploadsDir, fileName);
-    
-    fs.writeFileSync(filePath, buffer);
-    
-    const relativeUrl = `/uploads/${fileName}`;
-    return res.json({ 
-      url: relativeUrl, 
-      warning: 'Image saved locally to server public directory because Cloudinary is unconfigured or failed.' 
-    });
-  } catch (err: any) {
-    console.error('Local upload fallback failed:', err);
-    return res.status(500).json({ error: 'Failed to save image locally' });
+  } else {
+    return res.status(500).json({ error: 'Cloudinary credentials are not configured on the server.' });
   }
 });
 
@@ -417,7 +366,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

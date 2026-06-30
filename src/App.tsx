@@ -7,28 +7,19 @@ import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/c
 import { 
   ChevronRight, 
   Star, 
-  MapPin, 
   Heart, 
   ShoppingBag, 
-  CheckCircle2, 
   Truck, 
-  Search, 
   X,
   Plus,
   Minus,
-  Gift,
   HelpCircle,
-  QrCode,
-  Smartphone,
-  Info,
-  TrendingUp,
-  Tag,
-  ArrowRight
+  Smartphone
 } from 'lucide-react';
 
 export default function App() {
-  const { user, isSignedIn, isLoaded } = useUser();
-  const [darkMode, setDarkMode] = React.useState(false);
+  const { user, isSignedIn } = useUser();
+  const [darkMode] = React.useState(false);
   const [currentTab, setCurrentTab] = React.useState<string>('home');
   const [searchQuery, setSearchQuery] = React.useState<string>('');
   
@@ -448,7 +439,7 @@ export default function App() {
 
               {/* Deal Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                {dailyDeals.map((deal, idx) => (
+                {dailyDeals.map((deal) => (
                   <div key={deal.id} className={`brutal-card p-4 flex flex-col justify-between bg-white dark:bg-[#1a1a1a]`}>
                     <div>
                       <div className="relative aspect-video brutal-border-2 overflow-hidden mb-4 bg-gray-100">
@@ -1012,7 +1003,7 @@ export default function App() {
                 />
                 {selectedProductDetails.images && selectedProductDetails.images.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto pb-1">
-                    {[selectedProductDetails.image, ...selectedProductDetails.images].map((img, idx) => (
+                    {Array.from(new Set([selectedProductDetails.image, ...selectedProductDetails.images])).map((img, idx) => (
                       <button
                         key={idx}
                         type="button"

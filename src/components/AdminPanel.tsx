@@ -6,7 +6,7 @@ import {
   Truck, 
   Percent, 
   TrendingUp, 
-  FileSpreadsheet, 
+  Edit2, 
   Trash2,
   MessageSquare,
   MapPin,
@@ -38,6 +38,15 @@ export default function AdminPanel({
   regionalStories,
   setRegionalStories
 }: AdminPanelProps) {
+  
+  const [customAlert, setCustomAlert] = React.useState<{message: string, type: 'success'|'error'} | null>(null);
+  const [confirmModal, setConfirmModal] = React.useState<{isOpen: boolean, message: string, onConfirm: () => void} | null>(null);
+  const triggerAlert = (message: string, type: 'success' | 'error' = 'success') => {
+    setCustomAlert({message, type});
+    setTimeout(() => setCustomAlert(null), 3000);
+  };
+  const [editingProductId, setEditingProductId] = React.useState<string | null>(null);
+
   const [activeSection, setActiveSection] = React.useState<'analytics' | 'products' | 'orders' | 'marketing' | 'regional_stories'>('analytics');
   const { getToken } = useAuth();
 
@@ -107,8 +116,8 @@ export default function AdminPanel({
               const err = await res.json();
               reject(new Error(err.error || 'Server error'));
             }
-          } catch (err: any) {
-            reject(err);
+          } catch (_err: any) {
+            reject(_err);
           }
         };
         reader.onerror = () => reject(new Error('File reading error'));
@@ -118,8 +127,8 @@ export default function AdminPanel({
       try {
         const url = await uploadPromise;
         uploadedUrls.push(url);
-      } catch (err: any) {
-        alert(`Error uploading file ${file.name}: ${err.message}`);
+      } catch (_err: any) {
+        // alert(`Error uploading file ${file.name}: ${err.message}`);
       }
     }
 
@@ -128,7 +137,7 @@ export default function AdminPanel({
       if (!newImage) {
         setNewImage(uploadedUrls[0]);
       }
-      alert(`Successfully uploaded ${uploadedUrls.length} image(s)!`);
+      // alert(`Successfully uploaded ${uploadedUrls.length} image(s)!`);
     }
     setIsUploading(false);
   };
@@ -155,9 +164,9 @@ export default function AdminPanel({
           const data = await res.json();
           setNewStoryImage(data.url);
           if (data.warning) {
-            alert(data.warning);
+            // alert(data.warning);
           } else {
-            alert('Regional story image uploaded successfully!');
+            // alert('Regional story image uploaded successfully!');
           }
         } else {
           let errMsg = 'Server error';
@@ -167,10 +176,10 @@ export default function AdminPanel({
           } catch (_) {
             errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
           }
-          alert(`Upload failed: ${errMsg}`);
+          // alert(`Upload failed: ${errMsg}`);
         }
-      } catch (err: any) {
-        alert('Upload error: ' + err.message);
+      } catch (_err: any) {
+        // alert('Upload error: ' + err.message);
       } finally {
         setIsUploadingStoryImage(false);
       }
@@ -184,7 +193,7 @@ export default function AdminPanel({
     if (!newName) return;
     const finalImage = newImage || 'https://images.unsplash.com/photo-1597983073493-88cd35cf93b0?auto=format&fit=crop&q=80&w=400';
     const item: Product = {
-      id: 'custom-' + Date.now().toString(),
+      id: editingProductId || ('custom-' + Date.now().toString()),
       name: newName,
       category: newCategory,
       price: Number(newPrice),
@@ -211,18 +220,24 @@ export default function AdminPanel({
         body: JSON.stringify(item)
       });
       if (res.ok) {
-        setProducts([item, ...products]);
+        if (editingProductId) {
+          setProducts(products.map(p => p.id === editingProductId ? item : p));
+          setEditingProductId(null);
+          triggerAlert('Product successfully updated!');
+        } else {
+          setProducts([item, ...products]);
+        }
         setNewName('');
         setNewImage('');
         setNewImages([]);
-        alert('Product successfully added to database!');
+        // alert('Product successfully added to database!');
       } else {
         const err = await res.json();
-        alert(`Failed to add product: ${err.error || 'Server error'}`);
+        // alert(`Failed to add product: ${err.error || 'Server error'}`);
       }
-    } catch (err: any) {
-      console.error(err);
-      alert('Error adding product: ' + err.message);
+    } catch (_err: any) {
+      console.error(_err);
+      // alert('Error adding product: ' + err.message);
     }
   };
 
@@ -238,13 +253,13 @@ export default function AdminPanel({
       });
       if (res.ok) {
         setProducts(products.filter(p => p.id !== id));
-        alert('Product successfully removed from database.');
+        triggerAlert('Product successfully removed from database.');
       } else {
         const err = await res.json();
-        alert(`Failed to delete product: ${err.error || 'Server error'}`);
+        // alert(`Failed to delete product: ${err.error || 'Server error'}`);
       }
-    } catch (err: any) {
-      alert('Error deleting product: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error deleting product: ' + err.message);
     }
   };
 
@@ -261,13 +276,13 @@ export default function AdminPanel({
       });
       if (res.ok) {
         setOrders(orders.map(o => o.id === orderId ? { ...o, status } : o));
-        alert(`Order status updated to ${status}`);
+        // alert(`Order status updated to ${status}`);
       } else {
         const err = await res.json();
-        alert(`Failed to update status: ${err.error || 'Server error'}`);
+        // alert(`Failed to update status: ${err.error || 'Server error'}`);
       }
-    } catch (err: any) {
-      alert('Error updating status: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error updating status: ' + err.message);
     }
   };
 
@@ -286,13 +301,13 @@ export default function AdminPanel({
       if (res.ok) {
         setCouponCodes([...couponCodes, { code: newCoupon.toUpperCase(), discount: Number(newDiscount) }]);
         setNewCoupon('');
-        alert('Coupon successfully saved to database!');
+        // alert('Coupon successfully saved to database!');
       } else {
         const err = await res.json();
-        alert(`Failed to add coupon: ${err.error || 'Server error'}`);
+        // alert(`Failed to add coupon: ${err.error || 'Server error'}`);
       }
-    } catch (err: any) {
-      alert('Error adding coupon: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error adding coupon: ' + err.message);
     }
   };
 
@@ -308,13 +323,13 @@ export default function AdminPanel({
       });
       if (res.ok) {
         setCouponCodes(couponCodes.filter(c => c.code !== code));
-        alert('Coupon deleted successfully.');
+        triggerAlert('Coupon deleted successfully.');
       } else {
         const err = await res.json();
-        alert(`Failed to delete coupon: ${err.error || 'Server error'}`);
+        // alert(`Failed to delete coupon: ${err.error || 'Server error'}`);
       }
-    } catch (err: any) {
-      alert('Error deleting coupon: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error deleting coupon: ' + err.message);
     }
   };
 
@@ -322,7 +337,7 @@ export default function AdminPanel({
     if (!notifText) return;
     setSentNotifications([notifText, ...sentNotifications]);
     setNotifText('');
-    alert('Push notification dispatched!');
+    // alert('Push notification dispatched!');
   };
 
   const handleAddStory = async (e: React.FormEvent) => {
@@ -355,7 +370,7 @@ export default function AdminPanel({
         setNewStoryName('');
         setNewStoryDescription('');
         setNewStoryImage('');
-        alert('Regional story successfully added!');
+        // alert('Regional story successfully added!');
       } else {
         let errMsg = 'Server error';
         try {
@@ -364,10 +379,10 @@ export default function AdminPanel({
         } catch (_) {
           errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
         }
-        alert(`Failed to add story: ${errMsg}`);
+        // alert(`Failed to add story: ${errMsg}`);
       }
-    } catch (err: any) {
-      alert('Error adding story: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error adding story: ' + err.message);
     }
   };
 
@@ -383,7 +398,7 @@ export default function AdminPanel({
       });
       if (res.ok) {
         setRegionalStories(regionalStories.filter(s => s.id !== id));
-        alert('Regional story deleted successfully.');
+        triggerAlert('Regional story deleted successfully.');
       } else {
         let errMsg = 'Server error';
         try {
@@ -392,10 +407,10 @@ export default function AdminPanel({
         } catch (_) {
           errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
         }
-        alert(`Failed to delete story: ${errMsg}`);
+        // alert(`Failed to delete story: ${errMsg}`);
       }
-    } catch (err: any) {
-      alert('Error deleting story: ' + err.message);
+    } catch (_err: any) {
+      // alert('Error deleting story: ' + err.message);
     }
   };
 
@@ -405,10 +420,47 @@ export default function AdminPanel({
     .reduce((sum, o) => sum + o.total, 0);
 
   const totalSalesCount = orders.length;
-  const gstCollected = totalRevenue * 0.05; // Representational 5% GST
+  
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 text-left text-black dark:text-white">
+      {/* CUSTOM CONFIRM MODAL */}
+      {confirmModal?.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#1a1a1a] p-8 border-4 border-black shadow-[12px_12px_0_0_#000] max-w-sm w-full space-y-6 text-center">
+            <h3 className="text-2xl font-black uppercase tracking-tight text-black dark:text-white">Confirm Action</h3>
+            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{confirmModal.message}</p>
+            <div className="flex gap-4 mt-6">
+              <button 
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 p-3 border-2 border-black bg-white text-black font-black uppercase text-xs hover:bg-gray-100 transition-colors shadow-[4px_4px_0_0_#000] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className="flex-1 p-3 border-2 border-black bg-[#FFD400] text-black font-black uppercase text-xs hover:bg-[#FFC000] transition-colors shadow-[4px_4px_0_0_#000] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]"
+              >
+                Yes, OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM THEMED ALERT */}
+      {customAlert && (
+        <div className={`fixed bottom-6 right-6 z-50 p-4 border-4 border-black ${customAlert.type === 'error' ? 'bg-[#FF4D4F]' : 'bg-[#FFD400]'} text-black shadow-[6px_6px_0_0_#000] font-mono animate-bounce`}>
+          <p className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+            {customAlert.type === 'error' ? '⚠️ ERROR' : '✅ SUCCESS'}
+          </p>
+          <p className="font-bold text-xs mt-1">{customAlert.message}</p>
+        </div>
+      )}
+
       {/* Sidebar Controls */}
       <div className="space-y-3">
         <h3 className="text-xs font-black uppercase text-gray-400 tracking-wider px-3 mb-3">Operator Controls</h3>
@@ -635,8 +687,29 @@ export default function AdminPanel({
                 className="brutal-btn"
                 disabled={isUploading}
               >
-                {isUploading ? 'Uploading image...' : 'Save Product to Database'}
+                {isUploading ? 'Uploading image...' : (editingProductId ? 'Update Product in Database' : 'Save Product to Database')}
+              
               </button>
+              {editingProductId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProductId(null);
+                    setNewName('');
+                    setNewCategory('Men');
+                    setNewPrice('299');
+                    setNewOrigPrice('699');
+                    setNewImage('');
+                    setNewImages([]);
+                    setNewDesc('Premium fabric perfect for active styling.');
+                    setNewMaterial('100% Breathable Cotton');
+                  }}
+                  className="w-full mt-2 p-3 border-2 border-black bg-white text-black font-black uppercase tracking-wider text-xs hover:bg-gray-100"
+                >
+                  Cancel Edit
+                </button>
+              )}
+
             </form>
 
             {/* Manage live listings */}
@@ -662,13 +735,38 @@ export default function AdminPanel({
                         </p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => handleDeleteProduct(p.id)}
-                      className="p-2 border-2 border-black bg-[#FCE7F3] text-black hover:bg-[#FF4D4F] hover:text-white transition-all shrink-0"
-                      title="Delist product"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          const prod = products.find(pr => pr.id === p.id);
+                          if (prod) {
+                            setEditingProductId(prod.id);
+                            setNewName(prod.name);
+                            setNewCategory(prod.category as any);
+                            setNewPrice(prod.price.toString());
+                            setNewOrigPrice((prod.originalPrice || '').toString());
+                            setNewImage(prod.image);
+                            setNewImages(prod.images || []);
+                            setNewDesc(prod.description);
+                            setNewMaterial(prod.material);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }
+                        }}
+                        className="p-2 border-2 border-black bg-white text-black hover:bg-[#FFD400] transition-all shrink-0"
+                        title="Edit product"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteProduct(p.id)}
+                        className="p-2 border-2 border-black bg-[#FCE7F3] text-black hover:bg-[#FF4D4F] hover:text-white transition-all shrink-0"
+                        title="Delist product"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
                   </div>
                 ))}
               </div>

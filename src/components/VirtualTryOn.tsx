@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wand2, Camera, Loader2, ArrowRight } from 'lucide-react';
+import { Wand2, Camera, Loader2 } from 'lucide-react';
 import { Product } from '../types';
 
 interface VirtualTryOnProps {
@@ -14,7 +14,7 @@ const CONSTANT_AVATARS = [
   { id: 'av4', name: 'Rohan (Kids Boy)', gender: 'Kids', height: "4'1\"", size: '6-7Y', image: 'https://images.unsplash.com/photo-1519457431-44ccd64a579b?auto=format&fit=crop&q=80&w=150' }
 ];
 
-export default function VirtualTryOn({ darkMode, catalog }: VirtualTryOnProps) {
+export default function VirtualTryOn({ catalog }: VirtualTryOnProps) {
   const [selectedAvatarId, setSelectedAvatarId] = React.useState('av1');
   const [selectedProductId, setSelectedProductId] = React.useState<string>('w1');
   const [customPhoto, setCustomPhoto] = React.useState<string | null>(null);
