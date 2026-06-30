@@ -2,8 +2,7 @@ import React from 'react';
 import Header from './components/Header';
 import AdminPanel from './components/AdminPanel';
 import VirtualTryOn from './components/VirtualTryOn';
-import { DAILY_DEALS } from './data';
-import { Product, CartItem, Order } from './types';
+import { Product, CartItem, Order, RegionalStory } from './types';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
 import { 
   ChevronRight, 
@@ -45,6 +44,15 @@ export default function App() {
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [wishlist, setWishlist] = React.useState<Product[]>([]);
   const [selectedProductDetails, setSelectedProductDetails] = React.useState<Product | null>(null);
+  const [activeModalImage, setActiveModalImage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (selectedProductDetails) {
+      setActiveModalImage(selectedProductDetails.image);
+    } else {
+      setActiveModalImage(null);
+    }
+  }, [selectedProductDetails]);
 
   // Try-on utility overlays
   const [triggerTryOnModal, setTriggerTryOnModal] = React.useState(false);
@@ -71,6 +79,9 @@ export default function App() {
 
   // Orders registry (loaded from Neon DB)
   const [orders, setOrders] = React.useState<Order[]>([]);
+
+  // Regional Stories (loaded from Neon DB)
+  const [regionalStories, setRegionalStories] = React.useState<RegionalStory[]>([]);
   
   // Checkout Modal State
   const [showCheckoutModal, setShowCheckoutModal] = React.useState(false);
@@ -84,15 +95,35 @@ export default function App() {
       try {
         const prodRes = await fetch('/api/products');
         const prodData = await prodRes.json();
-        setProducts(prodData);
+        if (prodRes.ok && Array.isArray(prodData)) {
+          setProducts(prodData);
+        } else {
+          console.error("Failed to load products array:", prodData);
+        }
 
         const ordRes = await fetch('/api/orders');
         const ordData = await ordRes.json();
-        setOrders(ordData);
+        if (ordRes.ok && Array.isArray(ordData)) {
+          setOrders(ordData);
+        } else {
+          console.error("Failed to load orders array:", ordData);
+        }
 
         const coupRes = await fetch('/api/coupons');
         const coupData = await coupRes.json();
-        setCouponCodes(coupData);
+        if (coupRes.ok && Array.isArray(coupData)) {
+          setCouponCodes(coupData);
+        } else {
+          console.error("Failed to load coupons array:", coupData);
+        }
+
+        const regRes = await fetch('/api/regional-stories');
+        const regData = await regRes.json();
+        if (regRes.ok && Array.isArray(regData)) {
+          setRegionalStories(regData);
+        } else {
+          console.error("Failed to load regional-stories array:", regData);
+        }
       } catch (err) {
         console.error("Error loading Neon DB content:", err);
       }
@@ -241,6 +272,8 @@ export default function App() {
     return searchMatch && genderMatch && priceMatch && regionMatch;
   });
 
+  const dailyDeals = products.filter(p => p.tags.includes('FlashSale'));
+
   const cardColors = ['brutal-card-white', 'brutal-card-yellow', 'brutal-card-blue', 'brutal-card-green', 'brutal-card-pink'];
 
   return (
@@ -277,7 +310,7 @@ export default function App() {
                 </h1>
 
                 <h3 className="text-2xl font-bold uppercase text-[#6D5EF9] dark:text-[#a59bfb] tracking-wider">
-                  Premium Clothing Under ₹499
+                  Clothing Under ₹499
                 </h3>
                 
                 <p className="text-base text-gray-700 dark:text-gray-300 max-w-xl leading-relaxed font-medium">
@@ -415,7 +448,7 @@ export default function App() {
 
               {/* Deal Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                {DAILY_DEALS.map((deal, idx) => (
+                {dailyDeals.map((deal, idx) => (
                   <div key={deal.id} className={`brutal-card p-4 flex flex-col justify-between bg-white dark:bg-[#1a1a1a]`}>
                     <div>
                       <div className="relative aspect-video brutal-border-2 overflow-hidden mb-4 bg-gray-100">
@@ -429,9 +462,16 @@ export default function App() {
                     </div>
 
                     <div className="pt-6 border-t border-gray-200 dark:border-slate-800 mt-4 flex items-center justify-between">
-                      <div className="flex items-baseline gap-1.5">
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
                         <span className="text-2xl font-black text-[#FF4D4F]">₹99</span>
-                        <span className="text-xs text-gray-400 line-through">₹{deal.originalPrice}</span>
+                        {deal.originalPrice && deal.originalPrice > 99 && (
+                          <>
+                            <span className="text-xs text-gray-400 line-through">₹{deal.originalPrice}</span>
+                            <span className="text-emerald-500 font-extrabold text-[10px] uppercase">
+                              ({Math.round(((deal.originalPrice - 99) / deal.originalPrice) * 100)}% OFF)
+                            </span>
+                          </>
+                        )}
                       </div>
                       <button
                         onClick={() => handleAddToCart(deal)}
@@ -563,20 +603,13 @@ export default function App() {
                           : 'bg-white hover:bg-black hover:text-white'
                       }`}
                     >
-                      STRICTLY UNDER ₹{val}
+                      UNDER ₹{val}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* QR Code Quick Shop feature */}
-              <div className="brutal-card-no-hover p-6 bg-[#E0F2FE] border-3 border-black text-black text-center space-y-4">
-                <QrCode className="w-10 h-10 mx-auto text-black" />
-                <p className="text-xs font-black uppercase tracking-wider">SCAN TO PAY ON MOBILE</p>
-                <p className="text-[10px] font-semibold leading-relaxed">
-                  Scan QR code anywhere at home to checkout cart instantly via WhatsApp ordering protocols.
-                </p>
-              </div>
+
 
             </div>
 
@@ -686,9 +719,16 @@ export default function App() {
 
                       {/* Buy Action */}
                       <div className="pt-4 mt-4 border-t border-black/25 flex items-center justify-between">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-black text-black">₹{p.price}</span>
-                          <span className="text-xs text-gray-500 line-through">₹{p.originalPrice}</span>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-2xl font-black text-black dark:text-white">₹{p.price}</span>
+                          {p.originalPrice && p.originalPrice > p.price && (
+                            <>
+                              <span className="text-xs text-gray-500 line-through">₹{p.originalPrice}</span>
+                              <span className="text-[#FF4D4F] dark:text-rose-400 font-extrabold text-[10px]">
+                                ({Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% OFF)
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex gap-1.5">
@@ -729,53 +769,62 @@ export default function App() {
 
             {/* Quick selector buttons */}
             <div className="flex gap-2.5 overflow-x-auto pb-4">
-              {['All', 'Assam', 'Bengal', 'Punjab', 'Rajasthan', 'South India'].map((reg) => (
+              {(['All', ...Array.from(new Set(regionalStories.map(s => s.region)))] as string[]).map((reg) => (
                 <button
                   key={reg}
                   onClick={() => {
                     setSelectedRegion(reg);
-                    setSelectedGender('All');
-                    setCurrentTab('shop');
                   }}
                   className={`px-5 py-3 border-3 border-black text-xs font-black uppercase tracking-wider shrink-0 transition-all ${
-                    selectedRegion === reg
+                    selectedRegion.toLowerCase() === reg.toLowerCase()
                       ? 'bg-black text-white scale-105'
                       : 'bg-white text-black hover:bg-black hover:text-white dark:bg-[#1a1a1a] dark:text-white shadow-[2px_2px_0_0_#000]'
                   }`}
                 >
-                  {reg === 'All' ? '🎨 VIEW ALL REGIONAL CRAFT' : `${reg} HERITAGE`}
+                  {reg === 'All' ? '🎨 VIEW ALL REGIONAL CRAFT' : `${reg.toUpperCase()} HERITAGE`}
                 </button>
               ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { name: 'MAJULI HANDWOVEN COTTON', description: 'Certified Eri cotton weavers of Assam Majuli river islands. Soft, cruelty-free vegan silks under ₹450.', color: 'bg-[#FEF9C3]', borderCol: 'border-black' },
-                { name: 'BENGAL TANT ARTISTRY', description: 'Traditional light weaves with distinct scarlet red-and-white borders. Breathable summer drapes of Bengal.', color: 'bg-[#FCE7F3]', borderCol: 'border-black' },
-                { name: 'PHULKARI CRAFT', description: 'Classic darning geometry embroidery. Expressing vibrant colorful floral tilla artwork of Amritsar, Punjab.', color: 'bg-[#DCFCE7]', borderCol: 'border-black' },
-                { name: 'BAGRU STAMP BLOCK-PRINTS', description: 'Hand blocks applied with completely botanical Indigo and madder red dyes of Rajasthan desert tribes.', color: 'bg-[#E0F2FE]', borderCol: 'border-black' },
-                { name: 'KASAVU TRADITIONAL BOARD', description: 'Elite off-white base with bright luxury gold zari. Authentic traditional gold borders of South India.', color: 'bg-white', borderCol: 'border-black' }
-              ].map((regStory, idx) => (
-                <div key={idx} className={`brutal-card-no-hover p-6 border-3 ${regStory.borderCol} ${regStory.color} text-black relative overflow-hidden flex flex-col justify-between h-56`}>
-                  <div>
-                    <h4 className="font-black text-lg uppercase tracking-tight">{regStory.name}</h4>
-                    <p className="text-xs font-semibold mt-2 leading-relaxed opacity-85">{regStory.description}</p>
+            {regionalStories.length === 0 ? (
+              <p className="text-xs font-bold italic opacity-60 text-center py-12">No regional heritage weaves defined yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-6">
+                {regionalStories
+                  .filter((story) => selectedRegion === 'All' || story.region.toLowerCase() === selectedRegion.toLowerCase())
+                  .map((regStory) => (
+                  <div key={regStory.id} className={`brutal-card-no-hover p-0 border-3 ${regStory.borderCol} ${regStory.color} text-black relative overflow-hidden flex flex-col md:flex-row min-h-[14rem]`}>
+                    {regStory.image && (
+                      <div className="w-full md:w-1/3 h-48 md:h-auto border-b-3 md:border-b-0 md:border-r-3 border-black overflow-hidden bg-gray-150 shrink-0">
+                        <img src={regStory.image} alt={regStory.name} className="w-full h-full object-cover" />
+                      </div>
+                    )}
+                    <div className="p-6 flex flex-col justify-between flex-1">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-black text-white px-2 py-0.5 border border-black inline-block mb-2">
+                          {regStory.region} Heritage
+                        </span>
+                        <h4 className="font-black text-xl uppercase tracking-tight leading-tight">{regStory.name}</h4>
+                        <p className="text-xs font-semibold mt-2 leading-relaxed opacity-85">{regStory.description}</p>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-black/10 flex justify-start">
+                        <button 
+                          onClick={() => {
+                            setSelectedRegion(regStory.region);
+                            setSelectedGender('All');
+                            setCurrentTab('shop');
+                          }}
+                          className="py-2.5 px-6 border-2 border-black bg-black text-white hover:bg-white hover:text-black text-xs font-bold uppercase transition-all inline-flex items-center justify-center gap-1.5 shadow-[2px_2px_0_0_#000]"
+                        >
+                          <span>VIEW {regStory.region.toUpperCase()} GARMENTS</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => {
-                      const nameSnippet = regStory.name.split(' ')[0];
-                      setSelectedRegion(nameSnippet === 'MAJULI' ? 'Assam' : (nameSnippet === 'KASAVU' ? 'South India' : nameSnippet.charAt(0) + nameSnippet.slice(1).toLowerCase()));
-                      setSelectedGender('All');
-                      setCurrentTab('shop');
-                    }}
-                    className="mt-4 py-2 border-2 border-black bg-black text-white hover:bg-white hover:text-black text-xs font-bold uppercase transition-all inline-flex items-center justify-center gap-1"
-                  >
-                    <span>VIEW GARMENTS</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -797,6 +846,8 @@ export default function App() {
                     setOrders={setOrders}
                     couponCodes={couponCodes}
                     setCouponCodes={setCouponCodes}
+                    regionalStories={regionalStories}
+                    setRegionalStories={setRegionalStories}
                   />
                 </>
               ) : (
@@ -952,9 +1003,32 @@ export default function App() {
                 CLOSE
               </button>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-              <img src={selectedProductDetails.image} alt={selectedProductDetails.name} className="w-full aspect-square object-cover border-3 border-black bg-white" />
+              <div className="space-y-3 w-full">
+                <img 
+                  src={activeModalImage || selectedProductDetails.image} 
+                  alt={selectedProductDetails.name} 
+                  className="w-full aspect-square object-cover border-3 border-black bg-white" 
+                />
+                {selectedProductDetails.images && selectedProductDetails.images.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {[selectedProductDetails.image, ...selectedProductDetails.images].map((img, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setActiveModalImage(img)}
+                        className={`w-12 h-12 border-2 object-cover shrink-0 overflow-hidden transition-all ${
+                          (activeModalImage || selectedProductDetails.image) === img 
+                            ? 'border-[#FFD400] scale-95 shadow-[1px_1px_0_0_#000]' 
+                            : 'border-black opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               
               <div className="space-y-4">
                 <div>
@@ -962,9 +1036,16 @@ export default function App() {
                   <p className="text-xs text-gray-500 font-mono mt-1">PRODUCT ID: {selectedProductDetails.id.toUpperCase()}</p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-3xl font-black text-[#FF4D4F]">₹{selectedProductDetails.price}</span>
-                  <span className="text-sm text-gray-400 line-through">₹{selectedProductDetails.originalPrice}</span>
+                  {selectedProductDetails.originalPrice && selectedProductDetails.originalPrice > selectedProductDetails.price && (
+                    <>
+                      <span className="text-sm text-gray-400 line-through">₹{selectedProductDetails.originalPrice}</span>
+                      <span className="text-xs font-extrabold bg-[#FFD400] text-black border-2 border-black px-2 py-0.5 shadow-sm">
+                        {Math.round(((selectedProductDetails.originalPrice - selectedProductDetails.price) / selectedProductDetails.originalPrice) * 100)}% OFF
+                      </span>
+                    </>
+                  )}
                   <span className="text-xs font-bold border-2 border-black bg-[#DCFCE7] text-black px-2 py-0.5">IN STOCK: {selectedProductDetails.stock}</span>
                 </div>
 

@@ -8,9 +8,11 @@ import {
   TrendingUp, 
   FileSpreadsheet, 
   Trash2,
-  MessageSquare
+  MessageSquare,
+  MapPin,
+  Upload
 } from 'lucide-react';
-import { Product, Order } from '../types';
+import { Product, Order, RegionalStory } from '../types';
 import { useAuth } from '@clerk/clerk-react';
 
 interface AdminPanelProps {
@@ -21,6 +23,8 @@ interface AdminPanelProps {
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
   couponCodes: { code: string; discount: number }[];
   setCouponCodes: React.Dispatch<React.SetStateAction<{ code: string; discount: number }[]>>;
+  regionalStories: RegionalStory[];
+  setRegionalStories: React.Dispatch<React.SetStateAction<RegionalStory[]>>;
 }
 
 export default function AdminPanel({
@@ -30,9 +34,11 @@ export default function AdminPanel({
   orders,
   setOrders,
   couponCodes,
-  setCouponCodes
+  setCouponCodes,
+  regionalStories,
+  setRegionalStories
 }: AdminPanelProps) {
-  const [activeSection, setActiveSection] = React.useState<'analytics' | 'products' | 'orders' | 'marketing' | 'finance'>('analytics');
+  const [activeSection, setActiveSection] = React.useState<'analytics' | 'products' | 'orders' | 'marketing' | 'regional_stories'>('analytics');
   const { getToken } = useAuth();
 
   // Product register state
@@ -41,6 +47,7 @@ export default function AdminPanel({
   const [newPrice, setNewPrice] = React.useState('299');
   const [newOrigPrice, setNewOrigPrice] = React.useState('699');
   const [newImage, setNewImage] = React.useState('');
+  const [newImages, setNewImages] = React.useState<string[]>([]);
   const [newDesc, setNewDesc] = React.useState('Premium fabric perfect for active styling.');
   const [newMaterial, setNewMaterial] = React.useState('100% Breathable Cotton');
   const [isUploading, setIsUploading] = React.useState(false);
@@ -56,12 +63,81 @@ export default function AdminPanel({
     'Assam handloom collection was updated. Get hand-weaved Eri cotton now'
   ]);
 
+  // Regional stories states
+  const [newStoryName, setNewStoryName] = React.useState('');
+  const [newStoryDescription, setNewStoryDescription] = React.useState('');
+  const [newStoryColor, setNewStoryColor] = React.useState('bg-[#FEF9C3]');
+  const [newStoryRegion, setNewStoryRegion] = React.useState('Assam');
+  const [newStoryImage, setNewStoryImage] = React.useState('');
+  const [isUploadingStoryImage, setIsUploadingStoryImage] = React.useState(false);
+
   // Handle Cloudinary Image Upload
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const uploadedUrls: string[] = [];
+
+    // Loop through files and upload each
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      
+      const uploadPromise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = async () => {
+          const base64data = reader.result as string;
+          try {
+            const token = await getToken();
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ image: base64data })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.warning) {
+                console.warn(data.warning);
+              }
+              resolve(data.url);
+            } else {
+              const err = await res.json();
+              reject(new Error(err.error || 'Server error'));
+            }
+          } catch (err: any) {
+            reject(err);
+          }
+        };
+        reader.onerror = () => reject(new Error('File reading error'));
+        reader.readAsDataURL(file);
+      });
+
+      try {
+        const url = await uploadPromise;
+        uploadedUrls.push(url);
+      } catch (err: any) {
+        alert(`Error uploading file ${file.name}: ${err.message}`);
+      }
+    }
+
+    if (uploadedUrls.length > 0) {
+      setNewImages(prev => [...prev, ...uploadedUrls]);
+      if (!newImage) {
+        setNewImage(uploadedUrls[0]);
+      }
+      alert(`Successfully uploaded ${uploadedUrls.length} image(s)!`);
+    }
+    setIsUploading(false);
+  };
+
+  const handleStoryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
+    setIsUploadingStoryImage(true);
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64data = reader.result as string;
@@ -77,16 +153,26 @@ export default function AdminPanel({
         });
         if (res.ok) {
           const data = await res.json();
-          setNewImage(data.url);
-          alert('Image uploaded to Cloudinary successfully!');
+          setNewStoryImage(data.url);
+          if (data.warning) {
+            alert(data.warning);
+          } else {
+            alert('Regional story image uploaded successfully!');
+          }
         } else {
-          const err = await res.json();
-          alert(`Upload failed: ${err.error || 'Server error'}`);
+          let errMsg = 'Server error';
+          try {
+            const err = await res.json();
+            errMsg = err.error || errMsg;
+          } catch (_) {
+            errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
+          }
+          alert(`Upload failed: ${errMsg}`);
         }
       } catch (err: any) {
         alert('Upload error: ' + err.message);
       } finally {
-        setIsUploading(false);
+        setIsUploadingStoryImage(false);
       }
     };
     reader.readAsDataURL(file);
@@ -104,6 +190,7 @@ export default function AdminPanel({
       price: Number(newPrice),
       originalPrice: Number(newOrigPrice),
       image: finalImage,
+      images: newImages,
       description: newDesc,
       material: newMaterial,
       rating: 4.8,
@@ -127,6 +214,7 @@ export default function AdminPanel({
         setProducts([item, ...products]);
         setNewName('');
         setNewImage('');
+        setNewImages([]);
         alert('Product successfully added to database!');
       } else {
         const err = await res.json();
@@ -237,6 +325,80 @@ export default function AdminPanel({
     alert('Push notification dispatched!');
   };
 
+  const handleAddStory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStoryName || !newStoryDescription) return;
+
+    const id = 'custom-reg-' + Date.now().toString();
+    const story: RegionalStory = {
+      id,
+      name: newStoryName,
+      description: newStoryDescription,
+      color: newStoryColor,
+      borderCol: 'border-black',
+      region: newStoryRegion,
+      image: newStoryImage || 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&q=80&w=400'
+    };
+
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/regional-stories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(story)
+      });
+      if (res.ok) {
+        setRegionalStories([story, ...regionalStories]);
+        setNewStoryName('');
+        setNewStoryDescription('');
+        setNewStoryImage('');
+        alert('Regional story successfully added!');
+      } else {
+        let errMsg = 'Server error';
+        try {
+          const err = await res.json();
+          errMsg = err.error || errMsg;
+        } catch (_) {
+          errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
+        }
+        alert(`Failed to add story: ${errMsg}`);
+      }
+    } catch (err: any) {
+      alert('Error adding story: ' + err.message);
+    }
+  };
+
+  const handleDeleteStory = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this regional story?')) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/regional-stories/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        setRegionalStories(regionalStories.filter(s => s.id !== id));
+        alert('Regional story deleted successfully.');
+      } else {
+        let errMsg = 'Server error';
+        try {
+          const err = await res.json();
+          errMsg = err.error || errMsg;
+        } catch (_) {
+          errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
+        }
+        alert(`Failed to delete story: ${errMsg}`);
+      }
+    } catch (err: any) {
+      alert('Error deleting story: ' + err.message);
+    }
+  };
+
   // Safe calculators
   const totalRevenue = orders
     .filter(o => o.status !== 'Returned' && o.status !== 'Refunded')
@@ -255,7 +417,7 @@ export default function AdminPanel({
           { id: 'products', label: 'Product Registry', icon: Package },
           { id: 'orders', label: 'Order Fulfillment', icon: Truck },
           { id: 'marketing', label: 'Campaigns & Coupons', icon: Percent },
-          { id: 'finance', label: 'Finance & GST', icon: FileSpreadsheet }
+          { id: 'regional_stories', label: 'Regional Stories', icon: MapPin }
         ].map((sec) => {
           const Icon = sec.icon;
           const isActive = activeSection === sec.id;
@@ -363,7 +525,7 @@ export default function AdminPanel({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-gray-500">Price (₹) - max 499</label>
+                  <label className="text-[10px] font-black uppercase text-gray-500">Actual Price / Selling Price (₹) - max 499</label>
                   <input
                     type="number"
                     max="499"
@@ -374,31 +536,79 @@ export default function AdminPanel({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-gray-500">Original Price (₹)</label>
-                  <input
-                    type="number"
-                    value={newOrigPrice}
-                    onChange={(e) => setNewOrigPrice(e.target.value)}
-                    className="w-full brutal-input text-xs font-bold focus:outline-none"
-                  />
+                  <label className="text-[10px] font-black uppercase text-gray-500">Slashed Price / MRP (₹)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={newOrigPrice}
+                      onChange={(e) => setNewOrigPrice(e.target.value)}
+                      className="w-full brutal-input text-xs font-bold focus:outline-none pr-16"
+                    />
+                    {(() => {
+                      const p = Number(newPrice);
+                      const op = Number(newOrigPrice);
+                      if (p && op && op > p) {
+                        const pct = Math.round(((op - p) / op) * 100);
+                        return (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-[#FF4D4F] text-white text-[10px] font-extrabold px-1.5 py-0.5 border border-black shadow-[1px_1px_0_0_#000] z-10">
+                            {pct}% OFF
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-gray-500">Image Asset</label>
-                  <div className="space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="w-full text-xs"
-                    />
-                    {isUploading && <span className="text-xs text-gray-400 italic">Uploading to Cloudinary...</span>}
-                    <input
-                      type="text"
-                      value={newImage}
-                      onChange={(e) => setNewImage(e.target.value)}
-                      placeholder="Or enter image URL directly"
-                      className="w-full brutal-input text-xs font-bold focus:outline-none font-mono"
-                    />
+                  <label className="text-[10px] font-black uppercase text-gray-500">Product Images (Upload Multiple)</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                    <div className="md:col-span-2">
+                      <label className="w-full flex flex-col items-center justify-center border-2 border-black border-dashed bg-gray-50 dark:bg-slate-900 p-4 cursor-pointer hover:bg-gray-100 transition-all select-none">
+                        <Upload className="w-6 h-6 mb-1 text-black dark:text-white" />
+                        <span className="text-[11px] font-black uppercase text-black dark:text-white">Choose Product Images</span>
+                        <span className="text-[9px] font-bold text-gray-400 mt-0.5">Select one or more images (PNG, JPG, WEBP)</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-col justify-center border-2 border-dashed border-black min-h-[5.5rem] bg-gray-50 dark:bg-slate-900 p-2 overflow-hidden w-full">
+                      {isUploading ? (
+                        <div className="flex flex-col items-center justify-center py-4 space-y-2">
+                          <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-[8px] font-black uppercase tracking-wider animate-pulse">UPLOADING IMAGES...</span>
+                        </div>
+                      ) : newImages.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-1.5 max-h-24 overflow-y-auto w-full">
+                          {newImages.map((img, idx) => (
+                            <div key={idx} className="relative group aspect-square border border-black overflow-hidden bg-white">
+                              <img src={img} alt={`uploaded-${idx}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = newImages.filter((_, i) => i !== idx);
+                                  setNewImages(updated);
+                                  if (newImage === img) {
+                                    setNewImage(updated[0] || '');
+                                  }
+                                }}
+                                className="absolute top-0 right-0 bg-[#FF4D4F] text-white text-[7px] font-black p-1 border-l border-b border-black"
+                              >
+                                X
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <span className="text-[9px] text-gray-400 uppercase font-black">No Images Uploaded</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -435,12 +645,20 @@ export default function AdminPanel({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-1">
                 {products.map((p) => (
                   <div key={p.id} className="p-3 border-2 border-black flex gap-3 bg-gray-50 dark:bg-slate-900 items-center justify-between">
-                    <div className="flex gap-3 items-center">
+                    <div className="flex gap-3 items-center min-w-0">
                       <img src={p.image} alt={p.name} className="w-12 h-12 object-cover border-2 border-black shrink-0" />
                       <div className="text-left min-w-0">
                         <p className="text-xs font-black uppercase truncate text-black dark:text-gray-100">{p.name}</p>
-                        <p className="text-[10px] font-bold text-gray-400 mt-0.5">
-                          {p.category.toUpperCase()} | <span className="text-[#FF4D4F] font-black">₹{p.price}</span>
+                        <p className="text-[10px] font-bold text-gray-400 mt-0.5 flex flex-wrap items-center gap-1.5">
+                          <span>{p.category.toUpperCase()}</span>
+                          <span>|</span>
+                          <span className="text-[#FF4D4F] font-black">₹{p.price}</span>
+                          {p.originalPrice && p.originalPrice > p.price && (
+                            <>
+                              <span className="text-gray-400 line-through text-[9px]">₹{p.originalPrice}</span>
+                              <span className="text-emerald-500 font-extrabold text-[9px]">({Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100)}% OFF)</span>
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -613,29 +831,131 @@ export default function AdminPanel({
           </div>
         )}
 
-        {/* SECTION 6: GST FINANCE STATS */}
-        {activeSection === 'finance' && (
-          <div className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black space-y-6">
-            <h4 className="text-base font-black flex items-center gap-2 text-[#6D5EF9]">
-              <FileSpreadsheet className="w-5 h-5" /> Tax Accountant & Vendor Revenue Reports
-            </h4>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
-              {[
-                { title: 'Tax Type', desc: 'E-Commerce GST (5%)', col: 'bg-white' },
-                { title: 'GST Liability', desc: `₹${gstCollected.toFixed(2)}`, col: 'bg-[#DCFCE7]' },
-                { title: 'Vendor payout (90%)', desc: `₹${(totalRevenue * 0.9).toFixed(2)}`, col: 'bg-[#E0F2FE]' },
-                { title: 'Net margin (5%)', desc: `₹${(totalRevenue * 0.05).toFixed(2)}`, col: 'bg-[#FCE7F3]' }
-              ].map((report, idx) => (
-                <div key={idx} className={`p-4 border-2 border-black text-black ${report.col} flex flex-col justify-center min-h-[90px]`}>
-                  <span className="text-[9px] font-black uppercase opacity-60">{report.title}</span>
-                  <p className="text-sm font-black uppercase mt-1 leading-snug">{report.desc}</p>
-                </div>
-              ))}
-            </div>
 
-            <div className="p-4 border-2 border-black bg-[#FEF9C3] text-black text-xs font-mono leading-relaxed font-bold">
-              <strong>Notice:</strong> This spreadsheet serves as an instant representational compliance worksheet. Real values update automatically upon successful checking out of men, women, or regional shopping cards on our front-end simulator.
+
+        {/* SECTION 7: REGIONAL STORIES */}
+        {activeSection === 'regional_stories' && (
+          <div className="space-y-8">
+            <form onSubmit={handleAddStory} className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black space-y-4">
+              <h4 className="text-base font-black flex items-center gap-2 text-[#6D5EF9]">
+                <Plus className="w-5 h-5" /> Add Regional Weave Story
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Story Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={newStoryName}
+                    onChange={(e) => setNewStoryName(e.target.value)}
+                    placeholder="e.g. MAJULI HANDWOVEN COTTON"
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Region Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newStoryRegion}
+                    onChange={(e) => setNewStoryRegion(e.target.value)}
+                    placeholder="e.g. Assam"
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Card Background Color</label>
+                  <select
+                    value={newStoryColor}
+                    onChange={(e) => setNewStoryColor(e.target.value)}
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                  >
+                    <option value="bg-[#FEF9C3]">Yellow (bg-[#FEF9C3])</option>
+                    <option value="bg-[#FCE7F3]">Pink (bg-[#FCE7F3])</option>
+                    <option value="bg-[#DCFCE7]">Green (bg-[#DCFCE7])</option>
+                    <option value="bg-[#E0F2FE]">Blue (bg-[#E0F2FE])</option>
+                    <option value="bg-white">White (bg-white)</option>
+                  </select>
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Story Image Asset File</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                    <div className="md:col-span-2">
+                      <label className="w-full flex flex-col items-center justify-center border-2 border-black border-dashed bg-gray-50 dark:bg-slate-900 p-4 cursor-pointer hover:bg-gray-100 transition-all select-none">
+                        <Upload className="w-6 h-6 mb-1 text-black dark:text-white" />
+                        <span className="text-[11px] font-black uppercase text-black dark:text-white">Choose Image File</span>
+                        <span className="text-[9px] font-bold text-gray-400 mt-0.5">PNG, JPG, WEBP up to 10MB</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleStoryImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex justify-center border-2 border-dashed border-black h-20 bg-gray-50 dark:bg-slate-900 items-center overflow-hidden">
+                      {isUploadingStoryImage ? (
+                        <div className="flex flex-col items-center justify-center p-2 space-y-1">
+                          <div className="w-6 h-6 border-3 border-black border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-[8px] font-black uppercase tracking-wider animate-pulse">UPLOADING...</span>
+                        </div>
+                      ) : newStoryImage ? (
+                        <img src={newStoryImage} alt="Story Preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-[10px] text-gray-400 uppercase font-bold">No Image Selected</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black uppercase text-gray-500">Story Description</label>
+                <textarea
+                  required
+                  value={newStoryDescription}
+                  onChange={(e) => setNewStoryDescription(e.target.value)}
+                  placeholder="Tell the story of the artisans, weaving methods, or region..."
+                  rows={3}
+                  className="w-full brutal-input text-xs font-bold focus:outline-none"
+                />
+              </div>
+              <button 
+                type="submit" 
+                className="brutal-btn"
+                disabled={isUploadingStoryImage}
+              >
+                {isUploadingStoryImage ? 'Uploading image...' : 'Save Story to Database'}
+              </button>
+            </form>
+
+            {/* Manage live stories */}
+            <div className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black">
+              <h4 className="text-sm font-black mb-4 uppercase tracking-wider text-gray-400 font-mono">Live Stories ({regionalStories.length})</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-1">
+                {regionalStories.map((story) => (
+                  <div key={story.id} className={`p-4 border-2 border-black flex gap-3 items-center justify-between ${story.color} text-black`}>
+                    <div className="flex gap-3 items-center min-w-0">
+                      {story.image && (
+                        <img src={story.image} alt={story.name} className="w-12 h-12 object-cover border-2 border-black shrink-0" />
+                      )}
+                      <div className="text-left min-w-0">
+                        <p className="text-xs font-black uppercase truncate">{story.name}</p>
+                        <p className="text-[9px] font-bold text-gray-555 mt-0.5">
+                          REGION: {story.region.toUpperCase()}
+                        </p>
+                        <p className="text-[10px] font-semibold mt-1 line-clamp-2">{story.description}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteStory(story.id)}
+                      className="p-2 border-2 border-black bg-[#FCE7F3] text-black hover:bg-[#FF4D4F] hover:text-white transition-all shrink-0"
+                      title="Delete story"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

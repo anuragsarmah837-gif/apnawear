@@ -6,6 +6,7 @@ export interface Product {
   price: number;
   originalPrice: number;
   image: string;
+  images?: string[];
   description: string;
   material?: string;
   rating: number;
@@ -82,4 +83,14 @@ export interface StylistOutfitBoard {
   expertTip: string;
   trendForecast: string;
   isOffline?: boolean;
+}
+
+export interface RegionalStory {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  borderCol: string;
+  region: string;
+  image?: string;
 }

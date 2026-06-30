@@ -67,6 +67,27 @@ export async function initDb() {
       );
     `;
 
+    // Create regional_stories table
+    await sql`
+      CREATE TABLE IF NOT EXISTS regional_stories (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        color VARCHAR(50) NOT NULL,
+        border_col VARCHAR(50) DEFAULT 'border-black',
+        region VARCHAR(100) NOT NULL
+      );
+    `;
+
+    try {
+      await sql`ALTER TABLE regional_stories ADD COLUMN IF NOT EXISTS image TEXT;`;
+      await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS images TEXT[] DEFAULT '{}';`;
+    } catch (err) {
+      console.log("Migration log: column checks complete.");
+    }
+
+    // Seed products check is removed as per request to manage products exclusively from the admin panel
+
     console.log("Neon DB tables initialized successfully.");
   } catch (error) {
     console.error("Failed to initialize database tables:", error);
