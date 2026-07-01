@@ -2,7 +2,7 @@ import React from 'react';
 import Header from './components/Header';
 import AdminPanel from './components/AdminPanel';
 import VirtualTryOn from './components/VirtualTryOn';
-import { Product, CartItem, Order, RegionalStory } from './types';
+import { Product, CartItem, Order, RegionalStory, GalleryConfig } from './types';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from '@clerk/clerk-react';
 import { 
   ChevronRight, 
@@ -28,6 +28,7 @@ export default function App() {
   
   // Filter settings
   const [selectedGender, setSelectedGender] = React.useState<string>('All');
+  const [selectedSubCategory, setSelectedSubCategory] = React.useState<string>('All');
   const [maxPriceLimit, setMaxPriceLimit] = React.useState<number>(499);
   const [selectedRegion, setSelectedRegion] = React.useState<string>('All');
 
@@ -73,6 +74,17 @@ export default function App() {
 
   // Regional Stories (loaded from Neon DB)
   const [regionalStories, setRegionalStories] = React.useState<RegionalStory[]>([]);
+  
+  // Style Diaries Gallery Configs
+  const [galleryConfigs, setGalleryConfigs] = React.useState<GalleryConfig[]>(() => {
+    const saved = localStorage.getItem('apnawear_gallery_configs');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  // Persist Gallery Configs on change
+  React.useEffect(() => {
+    localStorage.setItem('apnawear_gallery_configs', JSON.stringify(galleryConfigs));
+  }, [galleryConfigs]);
   
   // Checkout Modal State
   const [showCheckoutModal, setShowCheckoutModal] = React.useState(false);
@@ -144,6 +156,23 @@ export default function App() {
       root.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Load categories from local storage
+  type CategoryData = { image: string; subcategories: Record<string, { image: string }> };
+  const [categoriesMap, setCategoriesMap] = React.useState<Record<string, CategoryData>>({});
+  React.useEffect(() => {
+    const saved = localStorage.getItem('apnawear_categories_v2');
+    if (saved) {
+      setCategoriesMap(JSON.parse(saved));
+    } else {
+      setCategoriesMap({
+        'Men': { image: '', subcategories: {} },
+        'Women': { image: '', subcategories: {} },
+        'Kids': { image: '', subcategories: {} },
+        'Regional': { image: '', subcategories: {} }
+      });
+    }
+  }, []);
 
   // State handlers
   const handleAddToCart = (product: Product, size = 'M') => {
@@ -257,10 +286,11 @@ export default function App() {
                         p.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const genderMatch = selectedGender === 'All' || p.category === selectedGender;
+    const subCatMatch = selectedSubCategory === 'All' || p.subCategory === selectedSubCategory;
     const priceMatch = p.price <= maxPriceLimit;
     const regionMatch = selectedRegion === 'All' || p.region === selectedRegion;
 
-    return searchMatch && genderMatch && priceMatch && regionMatch;
+    return searchMatch && genderMatch && subCatMatch && priceMatch && regionMatch;
   });
 
   const dailyDeals = products.filter(p => p.tags.includes('FlashSale'));
@@ -358,26 +388,33 @@ export default function App() {
                 <p className="text-sm font-semibold text-gray-500 mt-1">Select your target family wear segment</p>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                {[
-                  { name: 'MEN', emoji: '🤵', gender: 'Men', color: 'bg-white' },
-                  { name: 'WOMEN', emoji: '👗', gender: 'Women', color: 'bg-[#FEF9C3]' },
-                  { name: 'KIDS', emoji: '👶', gender: 'Kids', color: 'bg-[#DCFCE7]' },
-                  { name: 'REGIONAL', emoji: '🎨', gender: 'Regional', color: 'bg-[#E0F2FE]' }
-                ].map((cat, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setSelectedGender(cat.gender);
-                      setSelectedRegion('All');
-                      setCurrentTab('shop');
-                    }}
-                    className={`brutal-card p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer hover:scale-105 active:scale-95 transition-all ${cat.color}`}
-                  >
-                    <span className="text-6xl filter drop-shadow-[2px_2px_0_rgba(0,0,0,1)]">{cat.emoji}</span>
-                    <span className="text-xl font-extrabold text-black uppercase tracking-wider">{cat.name}</span>
-                  </button>
-                ))}
+              <div className="overflow-hidden w-full py-4 -my-4">
+                <div className={`${Object.keys(categoriesMap).length >= 5 ? 'shrink-0 animate-marquee whitespace-nowrap flex gap-6' : 'grid grid-cols-2 md:grid-cols-4 gap-6'}`}>
+                  {(Object.keys(categoriesMap).length >= 5 ? [...Object.entries(categoriesMap), ...Object.entries(categoriesMap)] : Object.entries(categoriesMap)).map(([catName, catData]: [string, any], idx) => {
+                    const colors = ['bg-white', 'bg-[#FEF9C3]', 'bg-[#DCFCE7]', 'bg-[#E0F2FE]', 'bg-[#FCE7F3]'];
+                    const color = colors[idx % colors.length];
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSelectedGender(catName);
+                          setSelectedRegion('All');
+                          setCurrentTab('shop');
+                        }}
+                        className={`brutal-card p-6 flex flex-col items-center justify-center text-center gap-2 cursor-pointer hover:scale-105 active:scale-95 transition-all ${color} relative overflow-hidden group ${Object.keys(categoriesMap).length >= 5 ? 'w-[250px] shrink-0' : ''}`}
+                      >
+                        {catData.image ? (
+                          <div className="w-20 h-20 border-3 border-black overflow-hidden bg-white z-10 shadow-[2px_2px_0_0_#000] rotate-[2deg]">
+                            <img src={catData.image} alt={catName} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <span className="text-6xl filter drop-shadow-[2px_2px_0_rgba(0,0,0,1)] z-10 mb-2">🛍️</span>
+                        )}
+                        <span className="text-xl font-extrabold text-black uppercase tracking-wider z-10 bg-white px-3 py-1 border-2 border-black rotate-[-2deg] mt-2">{catName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </section>
 
@@ -443,7 +480,14 @@ export default function App() {
                   <div key={deal.id} className={`brutal-card p-4 flex flex-col justify-between bg-white dark:bg-[#1a1a1a]`}>
                     <div>
                       <div className="relative aspect-video brutal-border-2 overflow-hidden mb-4 bg-gray-100">
-                        <img src={deal.image} alt={deal.name} className="w-full h-full object-cover" />
+                        <img 
+                          src={deal.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                          alt={deal.name} 
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                          }}
+                          className="w-full h-full object-cover" 
+                        />
                         <span className="absolute top-2 right-2 bg-[#FF4D4F] text-white font-extrabold text-xs px-2 py-0.5 border-2 border-black rotate-[5deg] shadow-sm">
                           ⚡ ₹99 ONLY
                         </span>
@@ -545,34 +589,78 @@ export default function App() {
 
         {/* TAB 2: GENERAL SHOP AND CATALOG */}
         {currentTab === 'shop' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-left">
-            {/* Filter sidebar controls */}
-            <div className="lg:col-span-3 space-y-6">
-              
-              {/* Category Segment Selector */}
-              <div className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black">
-                <h4 className="text-sm font-black uppercase text-black dark:text-white tracking-wider mb-4 pb-2 border-b-2 border-black dark:border-white">
-                  FAMILY SECTIONS
-                </h4>
-                <div className="flex flex-col gap-2">
-                  {['All', 'Men', 'Women', 'Kids', 'Regional'].map((item) => (
-                    <button
-                      key={item}
-                      onClick={() => {
-                        setSelectedGender(item);
-                        setSelectedRegion('All');
-                      }}
-                      className={`w-full text-left p-3 border-2 border-black text-xs font-bold uppercase transition-all shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] ${
-                        selectedGender === item 
-                          ? 'bg-[#FFD400] text-black translate-x-[2px] translate-y-[2px] shadow-none' 
-                          : 'bg-white text-black hover:bg-black hover:text-white dark:bg-[#1a1a1a] dark:text-white'
-                      }`}
-                    >
-                      {item === 'All' ? 'ALL FAMILY CLOTHES' : `${item} COLLECTION`}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          <div className="flex flex-col gap-8 text-left">
+            {/* Top Categories Row */}
+            <div className="w-full mb-2">
+               <h2 className="text-3xl font-black uppercase tracking-tight mb-6">SHOP BY CATEGORY</h2>
+               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  {['All', ...Object.keys(categoriesMap)].map((item) => {
+                    const image = item !== 'All' ? categoriesMap[item]?.image : null;
+                    return (
+                      <button
+                        key={item}
+                        onClick={() => {
+                          setSelectedGender(item);
+                          setSelectedSubCategory('All');
+                          setSelectedRegion('All');
+                        }}
+                        className={`w-full flex flex-col items-center justify-center gap-2 p-3 border-2 border-black text-xs font-bold uppercase transition-all shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] group ${
+                          selectedGender === item 
+                            ? 'bg-[#FFD400] text-black translate-x-[2px] translate-y-[2px] shadow-none' 
+                            : 'bg-white text-black hover:bg-black hover:text-white dark:bg-[#1a1a1a] dark:text-white'
+                        }`}
+                      >
+                        {image ? (
+                          <div className="w-10 h-10 border border-black overflow-hidden bg-white shadow-sm rotate-[2deg] group-hover:rotate-0 transition-all shrink-0">
+                            <img src={image} alt={item} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 flex items-center justify-center text-2xl shrink-0">
+                            {item === 'All' ? '🛍️' : '📁'}
+                          </div>
+                        )}
+                        <span className="truncate w-full text-center">{item === 'All' ? 'ALL' : item}</span>
+                      </button>
+                    );
+                  })}
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Filter sidebar controls */}
+              <div className="lg:col-span-3 space-y-6">
+                
+                {/* Subcategories Segment Selector */}
+                {selectedGender !== 'All' && categoriesMap[selectedGender] && Object.keys(categoriesMap[selectedGender].subcategories).length > 0 && (
+                  <div className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black">
+                    <h4 className="text-sm font-black uppercase text-black dark:text-white tracking-wider mb-4 pb-2 border-b-2 border-black dark:border-white">
+                      SUBCATEGORIES
+                    </h4>
+                    <div className="flex flex-col gap-2">
+                      {['All', ...Object.keys(categoriesMap[selectedGender].subcategories)].map((sub) => {
+                        const subImage = sub !== 'All' ? categoriesMap[selectedGender].subcategories[sub]?.image : null;
+                        return (
+                          <button
+                            key={sub}
+                            onClick={() => setSelectedSubCategory(sub)}
+                            className={`w-full flex items-center gap-3 p-3 border-2 border-black text-xs font-bold uppercase transition-all shadow-[2px_2px_0_0_#000] dark:shadow-[2px_2px_0_0_#fff] ${
+                              selectedSubCategory === sub 
+                                ? 'bg-[#FFD400] text-black translate-x-[2px] translate-y-[2px] shadow-none' 
+                                : 'bg-white text-black hover:bg-black hover:text-white dark:bg-[#1a1a1a] dark:text-white'
+                            }`}
+                          >
+                            {subImage && (
+                              <div className="w-6 h-6 border border-black overflow-hidden bg-white shrink-0 shadow-sm">
+                                <img src={subImage} alt={sub} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <span className="truncate">{sub === 'All' ? `ALL ${selectedGender}` : sub}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
               {/* Price filter slider selection */}
               <div className="brutal-card-no-hover p-6 bg-[#FEF9C3] border-3 border-black text-black">
@@ -655,7 +743,14 @@ export default function App() {
                       <div>
                         {/* Image Preview */}
                         <div className="relative aspect-square brutal-border-3 overflow-hidden mb-3 bg-white">
-                          <img src={p.image} alt={p.name} className="w-full h-full object-cover transition-transform duration-200 hover:scale-105" />
+                          <img 
+                            src={p.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                            alt={p.name} 
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                            }}
+                            className="w-full h-full object-cover transition-transform duration-200 hover:scale-105" 
+                          />
                           
                           {/* Tag */}
                           {p.tags.slice(0, 1).map((tg, i) => (
@@ -744,6 +839,7 @@ export default function App() {
               </div>
 
             </div>
+          </div>
           </div>
         )}
 
@@ -839,6 +935,8 @@ export default function App() {
                     setCouponCodes={setCouponCodes}
                     regionalStories={regionalStories}
                     setRegionalStories={setRegionalStories}
+                    galleryConfigs={galleryConfigs}
+                    setGalleryConfigs={setGalleryConfigs}
                   />
                 </>
               ) : (
@@ -903,7 +1001,14 @@ export default function App() {
                                 {order.items.map((item, itemIdx) => (
                                   <div key={itemIdx} className="flex justify-between items-center text-xs">
                                     <div className="flex items-center gap-2">
-                                      <img src={item.image} alt={item.name} className="w-8 h-8 object-cover border border-black" />
+                                      <img 
+                                        src={item.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                                        alt={item.name} 
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                                        }}
+                                        className="w-8 h-8 object-cover border border-black" 
+                                      />
                                       <span className="font-bold line-clamp-1">{item.name} (x{item.quantity})</span>
                                     </div>
                                     <span className="font-mono font-bold">₹{item.price * item.quantity}</span>
@@ -961,21 +1066,124 @@ export default function App() {
 
       </main>
 
-      {/* FOOTER MINI-BAR */}
-      <footer className="py-12 mt-20 border-t-3 border-black dark:border-white bg-[#FEF9C3] dark:bg-[#2d2a1b] text-black dark:text-white text-xs font-bold text-left">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-6 space-y-6">
-          <div className="flex flex-wrap justify-between items-center gap-6">
-            <div className="flex flex-wrap gap-4 uppercase font-black text-xs tracking-wider">
-              <button onClick={() => { setSelectedGender('Regional'); setCurrentTab('shop'); }} className="hover:underline">REGIONAL COLLECTIONS</button>
+      {/* AESTHETIC PHOTO GALLERIES */}
+      {galleryConfigs.map(galleryConfig => {
+        if ((galleryConfig.visibility === currentTab)) {
+          return (
+            <section key={galleryConfig.id} className="mt-20 border-t-3 border-black dark:border-white pt-16 pb-20 bg-white dark:bg-[#111111]">
+              <div className="max-w-[1280px] mx-auto px-4 md:px-6 text-center space-y-12">
+                <div className="space-y-2">
+                  <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight">{galleryConfig.title}</h2>
+                  <p className="text-sm font-semibold text-gray-500 uppercase tracking-widest">{galleryConfig.subtitle}</p>
+                </div>
+                {galleryConfig.layoutStyle === 'classic' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-2 md:px-0">
+                    <div className="h-[500px] relative group overflow-hidden p-0 border-3 border-black shadow-[4px_4px_0_0_#000]">
+                      {galleryConfig.imageLeft && <img src={galleryConfig.imageLeft} alt="Gallery Left" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
+                    </div>
+                    
+                    <div className="h-[500px] relative group overflow-hidden p-0 border-3 border-black shadow-[4px_4px_0_0_#000] flex flex-col items-center justify-center">
+                      {galleryConfig.imageCenter && <img src={galleryConfig.imageCenter} alt="Gallery Center" className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
+                      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-500"></div>
+                      <div className="relative z-10 bg-white dark:bg-[#1a1a1a] p-8 border-3 border-black text-center shadow-[6px_6px_0_0_#FFD400] max-w-[85%] group-hover:-translate-y-2 transition-transform duration-500">
+                         <h3 className="text-3xl font-black uppercase leading-tight tracking-tighter text-black dark:text-white" dangerouslySetInnerHTML={{ __html: galleryConfig.ctaTitle.replace('\n', '<br/>') }}></h3>
+                         <p className="mt-3 text-xs font-bold uppercase text-gray-600 dark:text-gray-400">{galleryConfig.ctaSubtext}</p>
+                         <button onClick={() => setCurrentTab('shop')} className="mt-6 px-8 py-3 bg-black text-white text-xs font-black uppercase border-2 border-black hover:bg-[#FFD400] hover:text-black transition-all">{galleryConfig.ctaButtonText}</button>
+                      </div>
+                    </div>
+
+                    <div className="h-[500px] relative group overflow-hidden p-0 border-3 border-black shadow-[4px_4px_0_0_#000]">
+                      {galleryConfig.imageRight && <img src={galleryConfig.imageRight} alt="Gallery Right" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:h-[600px] px-2 md:px-0">
+                    {/* Main Feature */}
+                    <div className="md:col-span-5 h-[400px] md:h-full relative group overflow-hidden brutal-card-no-hover p-0">
+                      {galleryConfig.imageLeft && <img src={galleryConfig.imageLeft} alt="Gallery Left" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />}
+                    </div>
+                    
+                    {/* Center Stack */}
+                    <div className="md:col-span-3 grid grid-rows-2 gap-4 h-[600px] md:h-full">
+                      <div className="relative group overflow-hidden brutal-card-no-hover p-0 h-full">
+                        {galleryConfig.imageCenter && <img src={galleryConfig.imageCenter} alt="Gallery Center" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />}
+                      </div>
+                      <div className="relative group overflow-hidden brutal-card-no-hover p-6 h-full bg-[#FFD400] flex flex-col justify-center items-center text-black border-3 border-black text-center">
+                         <h3 className="text-3xl md:text-4xl font-black uppercase leading-none tracking-tighter" dangerouslySetInnerHTML={{ __html: galleryConfig.ctaTitle.replace('\n', '<br/>') }}></h3>
+                         <p className="mt-2 text-xs font-bold opacity-80 uppercase">{galleryConfig.ctaSubtext}</p>
+                         <button onClick={() => setCurrentTab('shop')} className="mt-6 px-6 py-3 bg-black text-white text-xs font-black uppercase border-2 border-black hover:bg-white hover:text-black hover:shadow-[4px_4px_0_0_#000] transition-all">{galleryConfig.ctaButtonText}</button>
+                      </div>
+                    </div>
+
+                    {/* Right Feature */}
+                    <div className="md:col-span-4 h-[400px] md:h-full relative group overflow-hidden brutal-card-no-hover p-0">
+                      {galleryConfig.imageRight && <img src={galleryConfig.imageRight} alt="Gallery Right" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        }
+        return null;
+      })}
+
+      {/* EXPANDED FOOTER */}
+      <footer className="py-16 border-t-3 border-black dark:border-white bg-[#FEF9C3] dark:bg-[#2d2a1b] text-black dark:text-white text-xs font-bold text-left">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-6 space-y-12">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 md:gap-8">
+            <div className="space-y-4">
+              <img src="/logo.png" alt="ValueKart Logo" className="h-10 md:h-12 w-auto object-contain" />
+              <p className="font-mono text-[11px] opacity-80 leading-relaxed max-w-xs">
+                FASHION FOR EVERY HOME. We provide premium aesthetic looks for Men, Women, Kids, and Regional styles at unbeatable prices securely under ₹499.
+              </p>
+              <div className="flex items-center gap-2 bg-black text-white px-3 py-1.5 border-2 border-black uppercase text-[10px] font-mono w-max">
+                <span>CERTIFIED STORE</span>
+                <span className="text-[#00C853] font-black">• SECURED</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 bg-black text-white px-3 py-1.5 border-2 border-black uppercase text-[10px] font-mono">
-              <span>CERTIFIED UNDER-₹499 STORE</span>
-              <span className="text-[#00C853] font-black">• SECURED</span>
+            
+            <div className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider border-b-2 border-black pb-1 inline-block">Support</h3>
+              <ul className="space-y-3 opacity-80 font-mono text-[11px] uppercase">
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Contact Us</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Track Order</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Shipping & Returns</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">FAQs</a></li>
+              </ul>
+            </div>
+            
+            <div className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider border-b-2 border-black pb-1 inline-block">Legal</h3>
+              <ul className="space-y-3 opacity-80 font-mono text-[11px] uppercase">
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Terms & Conditions</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Privacy Policy</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Refund Policy</a></li>
+                <li><a href="#" className="hover:underline hover:text-blue-600 transition-colors">Cookie Policy</a></li>
+              </ul>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-black uppercase tracking-wider border-b-2 border-black pb-1 inline-block">Socials</h3>
+              <div className="flex gap-2">
+                <a href="#" className="w-10 h-10 flex items-center justify-center border-2 border-black bg-white hover:bg-[#FFD400] text-black transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]">IG</a>
+                <a href="#" className="w-10 h-10 flex items-center justify-center border-2 border-black bg-white hover:bg-[#FFD400] text-black transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]">FB</a>
+                <a href="#" className="w-10 h-10 flex items-center justify-center border-2 border-black bg-white hover:bg-[#FFD400] text-black transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px]">X</a>
+              </div>
+              <p className="font-mono text-[11px] opacity-80 pt-2 max-w-[200px]">
+                Follow us for exclusive drops and regional traditional styles!
+              </p>
             </div>
           </div>
-          <p className="font-mono text-[10px] opacity-60">
-            © 2026 APNAWEAR (FASHION FOR EVERY HOME). SUPPORTING LOCAL WEAVING ARTISANS AND SMART BUDGETS ACROSS GUWAHATI & INDIA.
-          </p>
+          
+          <div className="pt-8 border-t-2 border-black/20 dark:border-white/20 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="font-mono text-[10px] opacity-60 uppercase">
+              © 2026 VALUEKART. SUPPORTING LOCAL WEAVING ARTISANS AND SMART BUDGETS.
+            </p>
+            <div className="flex flex-wrap gap-4 uppercase font-black text-[10px] tracking-wider opacity-80">
+              <button onClick={() => { setSelectedGender('Regional'); setCurrentTab('shop'); }} className="hover:underline text-blue-800 dark:text-blue-400">REGIONAL COLLECTIONS</button>
+            </div>
+          </div>
         </div>
       </footer>
 
@@ -997,8 +1205,11 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
               <div className="space-y-3 w-full">
                 <img 
-                  src={activeModalImage || selectedProductDetails.image} 
+                  src={activeModalImage || selectedProductDetails.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
                   alt={selectedProductDetails.name} 
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                  }}
                   className="w-full aspect-square object-cover border-3 border-black bg-white" 
                 />
                 {selectedProductDetails.images && selectedProductDetails.images.length > 0 && (
@@ -1014,7 +1225,14 @@ export default function App() {
                             : 'border-black opacity-70 hover:opacity-100'
                         }`}
                       >
-                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                        <img 
+                          src={img || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                          alt={`thumb-${idx}`} 
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                          }}
+                          className="w-full h-full object-cover" 
+                        />
                       </button>
                     ))}
                   </div>
@@ -1173,7 +1391,14 @@ export default function App() {
                   >
                     <X className="w-4 h-4" />
                   </button>
-                  <img src={item.image} alt={item.name} className="w-full aspect-square object-cover brutal-border-2 mb-3 bg-white" />
+                  <img 
+                    src={item.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                    alt={item.name} 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                    }}
+                    className="w-full aspect-square object-cover brutal-border-2 mb-3 bg-white" 
+                  />
                   <h4 className="text-sm font-black uppercase line-clamp-1">{item.name}</h4>
                   <p className="text-base font-black text-[#FF4D4F] mt-1">₹{item.price}</p>
                   <button
@@ -1214,7 +1439,14 @@ export default function App() {
               <div className="space-y-4">
                 {cart.map((item, idx) => (
                   <div key={idx} className="p-4 border-3 border-black bg-white dark:bg-[#1a1a1a] flex gap-4 items-center justify-between shadow-[4px_4px_0_0_#000] dark:shadow-[4px_4px_0_0_#fff]">
-                    <img src={item.product.image} alt={item.product.name} className="w-20 h-20 object-cover brutal-border-2 bg-white" />
+                    <img 
+                      src={item.product.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                      alt={item.product.name} 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                      }}
+                      className="w-20 h-20 object-cover brutal-border-2 bg-white" 
+                    />
                     
                     <div className="flex-1 text-left">
                       <h4 className="text-base font-black uppercase text-black dark:text-white line-clamp-1">{item.product.name}</h4>

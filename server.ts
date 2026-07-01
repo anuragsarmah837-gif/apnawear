@@ -342,8 +342,8 @@ app.post('/api/upload', checkAdmin, async (req, res) => {
       });
       return res.json({ url: uploadResult.secure_url });
     } catch (error: any) {
-      console.error('Cloudinary upload error:', error);
-      return res.status(500).json({ error: 'Failed to upload image to Cloudinary' });
+      console.error('Cloudinary upload error:', error.message || error);
+      return res.status(500).json({ error: 'Failed to upload image to Cloudinary. Please check your credentials and permissions.' });
     }
   } else {
     return res.status(500).json({ error: 'Cloudinary credentials are not configured on the server.' });

@@ -10,9 +10,10 @@ import {
   Trash2,
   MessageSquare,
   MapPin,
-  Upload
+  Upload,
+  Tags
 } from 'lucide-react';
-import { Product, Order, RegionalStory } from '../types';
+import { Product, Order, RegionalStory, GalleryConfig } from '../types';
 import { useAuth } from '@clerk/clerk-react';
 
 interface AdminPanelProps {
@@ -25,10 +26,49 @@ interface AdminPanelProps {
   setCouponCodes: React.Dispatch<React.SetStateAction<{ code: string; discount: number }[]>>;
   regionalStories: RegionalStory[];
   setRegionalStories: React.Dispatch<React.SetStateAction<RegionalStory[]>>;
+  galleryConfigs: GalleryConfig[];
+  setGalleryConfigs: React.Dispatch<React.SetStateAction<GalleryConfig[]>>;
 }
 
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+      };
+      img.onerror = () => reject(new Error('Image load error'));
+    };
+    reader.onerror = () => reject(new Error('File read error'));
+  });
+};
+
 export default function AdminPanel({
-  darkMode,
+  darkMode: _darkMode,
   products,
   setProducts,
   orders,
@@ -36,7 +76,9 @@ export default function AdminPanel({
   couponCodes,
   setCouponCodes,
   regionalStories,
-  setRegionalStories
+  setRegionalStories,
+  galleryConfigs,
+  setGalleryConfigs
 }: AdminPanelProps) {
   
   const [customAlert, setCustomAlert] = React.useState<{message: string, type: 'success'|'error'} | null>(null);
@@ -47,19 +89,102 @@ export default function AdminPanel({
   };
   const [editingProductId, setEditingProductId] = React.useState<string | null>(null);
 
-  const [activeSection, setActiveSection] = React.useState<'analytics' | 'products' | 'orders' | 'marketing' | 'regional_stories'>('analytics');
+  const [activeSection, setActiveSection] = React.useState<'analytics' | 'products' | 'categories' | 'orders' | 'marketing' | 'regional_stories' | 'gallery'>('analytics');
   const { getToken } = useAuth();
+
+  type CategoryData = { image: string; subcategories: Record<string, { image: string }> };
+  const [categoriesMap, setCategoriesMap] = React.useState<Record<string, CategoryData>>(() => {
+    const saved = localStorage.getItem('apnawear_categories_v2');
+    if (saved) return JSON.parse(saved);
+    
+    // Migration from v1
+    const savedV1 = localStorage.getItem('apnawear_categories');
+    if (savedV1) {
+       const parsed = JSON.parse(savedV1);
+       const migrated: Record<string, CategoryData> = {};
+       for (const key in parsed) {
+         if (Array.isArray(parsed[key])) {
+           migrated[key] = { image: '', subcategories: {} };
+           parsed[key].forEach((sub: string) => {
+             migrated[key].subcategories[sub] = { image: '' };
+           });
+         } else {
+           migrated[key] = parsed[key] as CategoryData;
+         }
+       }
+       return migrated;
+    }
+
+    return {
+      'Men': { image: '', subcategories: { 'T-Shirts': { image: '' }, 'Pants': { image: '' }, 'Kurtas': { image: '' } } },
+      'Women': { image: '', subcategories: { 'Sarees': { image: '' }, 'Kurtas': { image: '' } } },
+      'Kids': { image: '', subcategories: { 'T-Shirts': { image: '' }, 'Toys': { image: '' } } },
+      'Other': { image: '', subcategories: { 'Accessories': { image: '' } } }
+    };
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('apnawear_categories_v2', JSON.stringify(categoriesMap));
+  }, [categoriesMap]);
+
+  const uploadImageFile = async (file: File): Promise<string> => {
+    const compressedBase64 = await compressImage(file);
+    const token = await getToken();
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ image: compressedBase64 })
+    });
+    if (!res.ok) throw new Error('Upload failed');
+    const data = await res.json();
+    return data.url;
+  };
+
+  const handleCatImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, catName: string, subCatName?: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    try {
+      triggerAlert('Uploading image...');
+      const url = await uploadImageFile(file);
+      setCategoriesMap(prev => {
+        const updated = { ...prev };
+        if (subCatName) {
+          updated[catName].subcategories[subCatName].image = url;
+        } else {
+          updated[catName].image = url;
+        }
+        return updated;
+      });
+      triggerAlert('Image uploaded successfully!');
+    } catch (err: any) {
+      triggerAlert('Error uploading image', 'error');
+    }
+  };
+
+  // Categories Management State
+  const [newCatName, setNewCatName] = React.useState('');
+  const [newCatImagePreview, setNewCatImagePreview] = React.useState<string | null>(null);
 
   // Product register state
   const [newName, setNewName] = React.useState('');
-  const [newCategory, setNewCategory] = React.useState<'Men' | 'Women' | 'Kids' | 'Regional'>('Men');
-  const [newPrice, setNewPrice] = React.useState('299');
-  const [newOrigPrice, setNewOrigPrice] = React.useState('699');
+  const [newCategory, setNewCategory] = React.useState(Object.keys(categoriesMap)[0] || '');
+  const [newSubcategory, setNewSubcategory] = React.useState('');
+  const [newPrice, setNewPrice] = React.useState('');
+  const [newOrigPrice, setNewOrigPrice] = React.useState('');
   const [newImage, setNewImage] = React.useState('');
   const [newImages, setNewImages] = React.useState<string[]>([]);
-  const [newDesc, setNewDesc] = React.useState('Premium fabric perfect for active styling.');
-  const [newMaterial, setNewMaterial] = React.useState('100% Breathable Cotton');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [newMaterial, setNewMaterial] = React.useState('');
+  const [newTags, setNewTags] = React.useState('');
+  const [newSizes, setNewSizes] = React.useState('');
   const [isUploading, setIsUploading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!categoriesMap[newCategory]) {
+      setNewCategory(Object.keys(categoriesMap)[0] || '');
+    }
+  }, [categoriesMap, newCategory]);
   
   // Custom Coupon state
   const [newCoupon, setNewCoupon] = React.useState('');
@@ -67,10 +192,7 @@ export default function AdminPanel({
 
   // Push notifications logs state
   const [notifText, setNotifText] = React.useState('');
-  const [sentNotifications, setSentNotifications] = React.useState<string[]>([
-    'Monsoon Special: Everything Under ₹299 for next 4 hours!',
-    'Assam handloom collection was updated. Get hand-weaved Eri cotton now'
-  ]);
+  const [sentNotifications, setSentNotifications] = React.useState<string[]>([]);
 
   // Regional stories states
   const [newStoryName, setNewStoryName] = React.useState('');
@@ -86,71 +208,10 @@ export default function AdminPanel({
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
-    const uploadedUrls: string[] = [];
-
-    // Loop through files and upload each
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const reader = new FileReader();
-      
-      const uploadPromise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = async () => {
-          const base64data = reader.result as string;
-          try {
-            const token = await getToken();
-            const res = await fetch('/api/upload', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ image: base64data })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data.warning) {
-                console.warn(data.warning);
-              }
-              resolve(data.url);
-            } else {
-              const err = await res.json();
-              reject(new Error(err.error || 'Server error'));
-            }
-          } catch (_err: any) {
-            reject(_err);
-          }
-        };
-        reader.onerror = () => reject(new Error('File reading error'));
-        reader.readAsDataURL(file);
-      });
-
-      try {
-        const url = await uploadPromise;
-        uploadedUrls.push(url);
-      } catch (_err: any) {
-        // alert(`Error uploading file ${file.name}: ${err.message}`);
-      }
-    }
-
-    if (uploadedUrls.length > 0) {
-      setNewImages(prev => [...prev, ...uploadedUrls]);
-      if (!newImage) {
-        setNewImage(uploadedUrls[0]);
-      }
-      // alert(`Successfully uploaded ${uploadedUrls.length} image(s)!`);
-    }
-    setIsUploading(false);
-  };
-
-  const handleStoryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingStoryImage(true);
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64data = reader.result as string;
-      try {
+    
+    try {
+      const uploadPromises = Array.from(files).map(async (file: File) => {
+        const compressedBase64 = await compressImage(file);
         const token = await getToken();
         const res = await fetch('/api/upload', {
           method: 'POST',
@@ -158,55 +219,92 @@ export default function AdminPanel({
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ image: base64data })
+          body: JSON.stringify({ image: compressedBase64 })
         });
-        if (res.ok) {
-          const data = await res.json();
-          setNewStoryImage(data.url);
-          if (data.warning) {
-            // alert(data.warning);
-          } else {
-            // alert('Regional story image uploaded successfully!');
-          }
-        } else {
-          let errMsg = 'Server error';
-          try {
-            const err = await res.json();
-            errMsg = err.error || errMsg;
-          } catch (_) {
-            errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
-          }
-          // alert(`Upload failed: ${errMsg}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Server error');
         }
-      } catch (_err: any) {
-        // alert('Upload error: ' + err.message);
-      } finally {
-        setIsUploadingStoryImage(false);
+        const data = await res.json();
+        return data.url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      if (uploadedUrls.length > 0) {
+        setNewImages(prev => [...prev, ...uploadedUrls]);
+        if (!newImage) {
+          setNewImage(uploadedUrls[0]);
+        }
+        triggerAlert(`Successfully uploaded ${uploadedUrls.length} image(s)!`);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Error uploading files:', err);
+      triggerAlert(err.message || 'Error uploading files', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleStoryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingStoryImage(true);
+    try {
+      const compressedBase64 = await compressImage(file);
+      const token = await getToken();
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ image: compressedBase64 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNewStoryImage(data.url);
+        triggerAlert('Regional story image uploaded successfully!');
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || 'Server error');
+      }
+    } catch (err: any) {
+      triggerAlert('Upload error: ' + err.message, 'error');
+    } finally {
+      setIsUploadingStoryImage(false);
+    }
   };
 
   // Form handle for products
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName) return;
-    const finalImage = newImage || 'https://images.unsplash.com/photo-1597983073493-88cd35cf93b0?auto=format&fit=crop&q=80&w=400';
+    if (!newName.trim()) {
+      triggerAlert('Product title is required.', 'error');
+      return;
+    }
+    if (!newImage) {
+      triggerAlert('Please upload at least one product image.', 'error');
+      return;
+    }
+    const finalImage = newImage;
     const item: Product = {
       id: editingProductId || ('custom-' + Date.now().toString()),
       name: newName,
       category: newCategory,
+      subCategory: newSubcategory,
       price: Number(newPrice),
       originalPrice: Number(newOrigPrice),
       image: finalImage,
       images: newImages,
       description: newDesc,
       material: newMaterial,
-      rating: 4.8,
-      reviewsCount: 1,
-      stock: 50,
-      tags: ['NewArrival', 'Under499'],
-      size: ['S', 'M', 'L', 'XL']
+      rating: 0,
+      reviewsCount: 0,
+      stock: 10,
+      tags: newTags.split(',').map(s => s.trim()).filter(Boolean),
+      size: newSizes.split(',').map(s => s.trim()).filter(Boolean)
     };
 
     try {
@@ -228,12 +326,20 @@ export default function AdminPanel({
           setProducts([item, ...products]);
         }
         setNewName('');
+        setNewCategory(Object.keys(categoriesMap)[0] || '');
+        setNewSubcategory('');
+        setNewPrice('');
+        setNewOrigPrice('');
         setNewImage('');
         setNewImages([]);
+        setNewDesc('');
+        setNewMaterial('');
+        setNewTags('');
+        setNewSizes('');
         // alert('Product successfully added to database!');
       } else {
         const err = await res.json();
-        // alert(`Failed to add product: ${err.error || 'Server error'}`);
+        triggerAlert(err.error || 'Failed to add product', 'error');
       }
     } catch (_err: any) {
       console.error(_err);
@@ -241,26 +347,31 @@ export default function AdminPanel({
     }
   };
 
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Are you sure you want to delist this product?')) return;
-    try {
-      const token = await getToken();
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
+  const handleDeleteProduct = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      message: 'Are you sure you want to delist this product?',
+      onConfirm: async () => {
+        try {
+          const token = await getToken();
+          const res = await fetch(`/api/products/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            setProducts(products.filter(p => p.id !== id));
+            triggerAlert('Product successfully removed from database.');
+          } else {
+            const err = await res.json();
+            triggerAlert(err.error || 'Failed to delete product', 'error');
+          }
+        } catch (_err: any) {
+          // alert('Error deleting product: ' + err.message);
         }
-      });
-      if (res.ok) {
-        setProducts(products.filter(p => p.id !== id));
-        triggerAlert('Product successfully removed from database.');
-      } else {
-        const err = await res.json();
-        // alert(`Failed to delete product: ${err.error || 'Server error'}`);
       }
-    } catch (_err: any) {
-      // alert('Error deleting product: ' + err.message);
-    }
+    });
   };
 
   const handleUpdateStatus = async (orderId: string, status: Order['status']) => {
@@ -279,7 +390,7 @@ export default function AdminPanel({
         // alert(`Order status updated to ${status}`);
       } else {
         const err = await res.json();
-        // alert(`Failed to update status: ${err.error || 'Server error'}`);
+        triggerAlert(err.error || 'Failed to update status', 'error');
       }
     } catch (_err: any) {
       // alert('Error updating status: ' + err.message);
@@ -304,33 +415,38 @@ export default function AdminPanel({
         // alert('Coupon successfully saved to database!');
       } else {
         const err = await res.json();
-        // alert(`Failed to add coupon: ${err.error || 'Server error'}`);
+        triggerAlert(err.error || 'Failed to add coupon', 'error');
       }
     } catch (_err: any) {
       // alert('Error adding coupon: ' + err.message);
     }
   };
 
-  const handleRemoveCoupon = async (code: string) => {
-    if (!confirm(`Are you sure you want to remove coupon ${code}?`)) return;
-    try {
-      const token = await getToken();
-      const res = await fetch(`/api/coupons/${code}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
+  const handleRemoveCoupon = (code: string) => {
+    setConfirmModal({
+      isOpen: true,
+      message: `Are you sure you want to remove coupon ${code}?`,
+      onConfirm: async () => {
+        try {
+          const token = await getToken();
+          const res = await fetch(`/api/coupons/${code}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            setCouponCodes(couponCodes.filter(c => c.code !== code));
+            triggerAlert('Coupon deleted successfully.');
+          } else {
+            const err = await res.json();
+            triggerAlert(err.error || 'Failed to delete coupon', 'error');
+          }
+        } catch (_err: any) {
+          // alert('Error deleting coupon: ' + err.message);
         }
-      });
-      if (res.ok) {
-        setCouponCodes(couponCodes.filter(c => c.code !== code));
-        triggerAlert('Coupon deleted successfully.');
-      } else {
-        const err = await res.json();
-        // alert(`Failed to delete coupon: ${err.error || 'Server error'}`);
       }
-    } catch (_err: any) {
-      // alert('Error deleting coupon: ' + err.message);
-    }
+    });
   };
 
   const handleSendNotif = () => {
@@ -386,32 +502,37 @@ export default function AdminPanel({
     }
   };
 
-  const handleDeleteStory = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this regional story?')) return;
-    try {
-      const token = await getToken();
-      const res = await fetch(`/api/regional-stories/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        setRegionalStories(regionalStories.filter(s => s.id !== id));
-        triggerAlert('Regional story deleted successfully.');
-      } else {
-        let errMsg = 'Server error';
+  const handleDeleteStory = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      message: 'Are you sure you want to delete this regional story?',
+      onConfirm: async () => {
         try {
-          const err = await res.json();
-          errMsg = err.error || errMsg;
-        } catch (_) {
-          errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
+          const token = await getToken();
+          const res = await fetch(`/api/regional-stories/${id}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          if (res.ok) {
+            setRegionalStories(regionalStories.filter(s => s.id !== id));
+            triggerAlert('Regional story deleted successfully.');
+          } else {
+            let errMsg = 'Server error';
+            try {
+              const err = await res.json();
+              errMsg = err.error || errMsg;
+            } catch (_) {
+              errMsg = `Status ${res.status}: ${res.statusText || res.status}`;
+            }
+            // alert(`Failed to delete story: ${errMsg}`);
+          }
+        } catch (_err: any) {
+          // alert('Error deleting story: ' + err.message);
         }
-        // alert(`Failed to delete story: ${errMsg}`);
       }
-    } catch (_err: any) {
-      // alert('Error deleting story: ' + err.message);
-    }
+    });
   };
 
   // Safe calculators
@@ -420,7 +541,23 @@ export default function AdminPanel({
     .reduce((sum, o) => sum + o.total, 0);
 
   const totalSalesCount = orders.length;
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number, field: 'imageLeft' | 'imageCenter' | 'imageRight') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      triggerAlert('Uploading gallery image...');
+      const url = await uploadImageFile(file);
+      const newConfigs = [...galleryConfigs];
+      newConfigs[index][field] = url;
+      setGalleryConfigs(newConfigs);
+      triggerAlert('Image uploaded successfully!');
+    } catch (err: any) {
+      triggerAlert('Error uploading image', 'error');
+    }
+  };
   
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 text-left text-black dark:text-white">
@@ -453,11 +590,11 @@ export default function AdminPanel({
 
       {/* CUSTOM THEMED ALERT */}
       {customAlert && (
-        <div className={`fixed bottom-6 right-6 z-50 p-4 border-4 border-black ${customAlert.type === 'error' ? 'bg-[#FF4D4F]' : 'bg-[#FFD400]'} text-black shadow-[6px_6px_0_0_#000] font-mono animate-bounce`}>
-          <p className="font-black uppercase tracking-widest text-sm flex items-center gap-2">
+        <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] p-6 border-4 border-black ${customAlert.type === 'error' ? 'bg-[#FF4D4F]' : 'bg-[#FFD400]'} text-black shadow-[12px_12px_0_0_#000] font-mono text-center max-w-sm w-full animate-bounce`}>
+          <p className="font-black uppercase tracking-widest text-sm flex items-center justify-center gap-2">
             {customAlert.type === 'error' ? '⚠️ ERROR' : '✅ SUCCESS'}
           </p>
-          <p className="font-bold text-xs mt-1">{customAlert.message}</p>
+          <p className="font-bold text-sm mt-2">{customAlert.message}</p>
         </div>
       )}
 
@@ -466,10 +603,12 @@ export default function AdminPanel({
         <h3 className="text-xs font-black uppercase text-gray-400 tracking-wider px-3 mb-3">Operator Controls</h3>
         {[
           { id: 'analytics', label: 'Revenue Analytics', icon: LineChart },
+          { id: 'categories', label: 'Categories Management', icon: Tags },
           { id: 'products', label: 'Product Registry', icon: Package },
           { id: 'orders', label: 'Order Fulfillment', icon: Truck },
           { id: 'marketing', label: 'Campaigns & Coupons', icon: Percent },
-          { id: 'regional_stories', label: 'Regional Stories', icon: MapPin }
+          { id: 'regional_stories', label: 'Regional Stories', icon: MapPin },
+          { id: 'gallery', label: 'Gallery Content', icon: Edit2 }
         ].map((sec) => {
           const Icon = sec.icon;
           const isActive = activeSection === sec.id;
@@ -544,6 +683,258 @@ export default function AdminPanel({
           </div>
         )}
 
+        {/* SECTION 2: CATEGORIES MANAGEMENT */}
+        {activeSection === 'categories' && (
+          <div className="space-y-6">
+            <div className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black">
+              <h4 className="text-base font-black mb-6 uppercase tracking-wider text-[#6D5EF9] flex items-center gap-2">
+                <Tags className="w-5 h-5" /> Categories & Subcategories
+              </h4>
+              
+              {/* Add New Category */}
+              <div className="flex gap-2 max-w-lg mb-8 items-center h-12">
+                <label className={`w-12 h-12 flex-shrink-0 border-3 border-black flex items-center justify-center cursor-pointer ${newCatImagePreview ? '' : 'bg-[#FFD400] hover:bg-black hover:text-white'} transition-colors`} title="Upload Category Image (Required)">
+                  {newCatImagePreview ? (
+                    <img src={newCatImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Upload className="w-5 h-5" />
+                  )}
+                  <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    triggerAlert('Uploading preview...');
+                    try {
+                      const url = await uploadImageFile(file);
+                      setNewCatImagePreview(url);
+                      triggerAlert('Image ready!');
+                    } catch(err) { triggerAlert('Upload failed', 'error'); }
+                  }} />
+                </label>
+                <input
+                  type="text"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  placeholder="New Category Name..."
+                  className="w-full h-full brutal-input text-sm font-bold focus:outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (!newCatName.trim()) return;
+                      if (!newCatImagePreview) {
+                        triggerAlert('Category Image is required!', 'error');
+                        return;
+                      }
+                      if (categoriesMap[newCatName]) {
+                        triggerAlert('Category already exists!', 'error');
+                        return;
+                      }
+                      setCategoriesMap(prev => ({ ...prev, [newCatName.trim()]: { image: newCatImagePreview, subcategories: {} } }));
+                      setNewCatName('');
+                      setNewCatImagePreview(null);
+                      triggerAlert('Category created!');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (!newCatName.trim()) return;
+                    if (!newCatImagePreview) {
+                      triggerAlert('Category Image is required!', 'error');
+                      return;
+                    }
+                    if (categoriesMap[newCatName]) {
+                      triggerAlert('Category already exists!', 'error');
+                      return;
+                    }
+                    setCategoriesMap(prev => ({ ...prev, [newCatName.trim()]: { image: newCatImagePreview, subcategories: {} } }));
+                    setNewCatName('');
+                    setNewCatImagePreview(null);
+                    triggerAlert('Category created!');
+                  }}
+                  className="brutal-btn px-6 h-full whitespace-nowrap flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> CREATE
+                </button>
+              </div>
+
+              {/* Existing Categories Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {Object.entries(categoriesMap).map(([cat, catData]: [string, any]) => (
+                  <div key={cat} className="border-3 border-black p-5 bg-gray-50 dark:bg-slate-900 shadow-[4px_4px_0_0_#000] flex flex-col h-full relative overflow-hidden group/catcard">
+                    {catData.image && <img src={catData.image} alt={cat} className="absolute inset-0 w-full h-full object-cover opacity-[0.03] pointer-events-none" />}
+                    <div className="flex justify-between items-center mb-4 pb-3 border-b-2 border-black relative z-10">
+                      <div className="flex items-center gap-3">
+                        {catData.image ? (
+                           <div className="relative group/catimg">
+                             <img src={catData.image} alt={cat} className="w-10 h-10 rounded-full border-2 border-black object-cover bg-white" />
+                             <label className="absolute inset-0 bg-black/50 text-white flex items-center justify-center rounded-full opacity-0 group-hover/catimg:opacity-100 cursor-pointer transition-opacity">
+                               <Upload className="w-4 h-4" />
+                               <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCatImageUpload(e, cat)} />
+                             </label>
+                           </div>
+                        ) : (
+                           <label className="w-10 h-10 rounded-full border-2 border-black bg-[#FFD400] flex flex-col items-center justify-center cursor-pointer hover:bg-black hover:text-white transition-colors" title="Upload Category Image">
+                             <Upload className="w-3.5 h-3.5 mb-0.5" />
+                             <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCatImageUpload(e, cat)} />
+                           </label>
+                        )}
+                        <span className="font-black text-xl uppercase tracking-tight">{cat}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (Object.keys(categoriesMap).length <= 1) {
+                            triggerAlert('Cannot delete the last category', 'error');
+                            return;
+                          }
+                          if (!window.confirm(`Are you sure you want to delete the category "${cat}" and all its subcategories?`)) return;
+                          const updated = { ...categoriesMap };
+                          delete updated[cat];
+                          setCategoriesMap(updated);
+                          triggerAlert('Category deleted');
+                        }}
+                        className="text-[#FF4D4F] hover:bg-[#FF4D4F] hover:text-white border-2 border-transparent hover:border-black p-1.5 transition-all"
+                        title="Delete Category"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Subcategories List */}
+                    <div className="flex-1 flex flex-wrap gap-2 mb-4 content-start relative z-10">
+                      {Object.entries(catData.subcategories).map(([sub, subData]: [string, any]) => (
+                        <div key={sub} className="text-xs font-bold bg-white dark:bg-black border-2 border-black flex items-center group overflow-hidden shadow-[2px_2px_0_0_#000]">
+                          {subData.image ? (
+                             <label className="w-7 h-7 flex-shrink-0 cursor-pointer relative group/subimg border-r-2 border-black" title="Change Image">
+                               <img src={subData.image} alt={sub} className="w-full h-full object-cover" />
+                               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/subimg:opacity-100 transition-opacity">
+                                 <Upload className="w-3 h-3 text-white" />
+                               </div>
+                               <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCatImageUpload(e, cat, sub)} />
+                             </label>
+                          ) : (
+                             <label className="w-7 h-7 flex-shrink-0 min-h-[28px] bg-gray-100 text-gray-500 hover:text-black flex items-center justify-center border-r-2 border-black cursor-pointer hover:bg-[#FFD400] transition-colors" title="Upload Subcategory Image">
+                               <Upload className="w-3 h-3" />
+                               <input type="file" className="hidden" accept="image/*" onChange={(e) => handleCatImageUpload(e, cat, sub)} />
+                             </label>
+                          )}
+                          <span className="px-2 whitespace-nowrap">{sub}</span>
+                          <button
+                            onClick={() => {
+                              if (!window.confirm(`Are you sure you want to delete the subcategory "${sub}"?`)) return;
+                              setCategoriesMap(prev => {
+                                const updated = { ...prev };
+                                delete updated[cat].subcategories[sub];
+                                return updated;
+                              });
+                            }}
+                            className="text-gray-400 hover:text-white hover:bg-[#FF4D4F] transition-colors border-l-2 border-transparent group-hover:border-black px-1.5 h-full flex items-center justify-center"
+                            title="Remove Subcategory"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      {Object.keys(catData.subcategories).length === 0 && <span className="text-xs text-gray-400 font-bold italic w-full">No subcategories yet.</span>}
+                    </div>
+
+                    {/* Add Inline Subcategory */}
+                    <div className="mt-auto pt-4 border-t-2 border-dashed border-gray-300 dark:border-gray-700 relative z-10">
+                      <div className="flex gap-2 h-10">
+                        <label className="w-10 h-full flex-shrink-0 border-2 border-black bg-gray-100 flex items-center justify-center cursor-pointer hover:bg-[#FFD400] transition-colors" id={`subcat-img-label-${cat}`} title="Upload Subcategory Image (Required)">
+                           <Upload className="w-4 h-4 text-gray-600" />
+                           <input type="file" className="hidden" accept="image/*" id={`subcat-file-${cat}`} onChange={(e) => {
+                              const label = document.getElementById(`subcat-img-label-${cat}`);
+                              if (label && e.target.files?.[0]) {
+                                 label.classList.add('!bg-[#00C853]');
+                                 label.classList.add('text-white');
+                                 triggerAlert('Image attached for ' + cat);
+                              }
+                           }} />
+                        </label>
+                        <input
+                          type="text"
+                          id={`subcat-input-${cat}`}
+                          placeholder={`Add to ${cat}...`}
+                          className="w-full h-full brutal-input text-xs font-bold focus:outline-none"
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const input = e.currentTarget;
+                              const val = input.value.trim();
+                              if (!val) return;
+                              const fileInput = document.getElementById(`subcat-file-${cat}`) as HTMLInputElement;
+                              const file = fileInput.files?.[0];
+                              if (!file) {
+                                triggerAlert('Subcategory Image is required!', 'error');
+                                return;
+                              }
+                              if (categoriesMap[cat].subcategories[val]) {
+                                triggerAlert('Subcategory already exists!', 'error');
+                                return;
+                              }
+                              triggerAlert('Creating Subcategory...');
+                              try {
+                                const url = await uploadImageFile(file);
+                                setCategoriesMap(prev => ({
+                                  ...prev,
+                                  [cat]: { ...prev[cat], subcategories: { ...prev[cat].subcategories, [val]: { image: url } } }
+                                }));
+                                input.value = '';
+                                fileInput.value = '';
+                                const label = document.getElementById(`subcat-img-label-${cat}`);
+                                if(label) { label.classList.remove('!bg-[#00C853]', 'text-white'); }
+                                triggerAlert('Subcategory added!');
+                              } catch(err) {
+                                triggerAlert('Failed to create subcategory', 'error');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={async () => {
+                            const input = document.getElementById(`subcat-input-${cat}`) as HTMLInputElement;
+                            const fileInput = document.getElementById(`subcat-file-${cat}`) as HTMLInputElement;
+                            const val = input.value.trim();
+                            if (!val) return;
+                            const file = fileInput.files?.[0];
+                            if (!file) {
+                              triggerAlert('Subcategory Image is required!', 'error');
+                              return;
+                            }
+                            if (categoriesMap[cat].subcategories[val]) {
+                              triggerAlert('Subcategory already exists!', 'error');
+                              return;
+                            }
+                            triggerAlert('Creating Subcategory...');
+                            try {
+                              const url = await uploadImageFile(file);
+                              setCategoriesMap(prev => ({
+                                ...prev,
+                                [cat]: { ...prev[cat], subcategories: { ...prev[cat].subcategories, [val]: { image: url } } }
+                              }));
+                              input.value = '';
+                              fileInput.value = '';
+                              const label = document.getElementById(`subcat-img-label-${cat}`);
+                              if(label) { label.classList.remove('!bg-[#00C853]', 'text-white'); }
+                              triggerAlert('Subcategory added!');
+                            } catch(err) {
+                              triggerAlert('Failed to create subcategory', 'error');
+                            }
+                          }}
+                          className="brutal-btn px-3 flex shrink-0 items-center justify-center"
+                          title="Add Subcategory"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* SECTION 2: PRODUCT REGISTRY */}
         {activeSection === 'products' && (
           <div className="space-y-8">
@@ -566,14 +957,33 @@ export default function AdminPanel({
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-gray-500">Category</label>
                   <select
+                    required
                     value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value as any)}
+                    onChange={(e) => {
+                      setNewCategory(e.target.value);
+                      setNewSubcategory('');
+                    }}
                     className="w-full brutal-input text-xs font-bold focus:outline-none"
                   >
-                    <option value="Men">Men</option>
-                    <option value="Women">Women</option>
-                    <option value="Kids">Kids</option>
-                    <option value="Regional">Regional Collectors</option>
+                    <option value="">Select Category</option>
+                    {Object.keys(categoriesMap).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Subcategory</label>
+                  <select
+                    required
+                    value={newSubcategory}
+                    onChange={(e) => setNewSubcategory(e.target.value)}
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                    disabled={!newCategory}
+                  >
+                    <option value="">Select Subcategory</option>
+                    {Object.keys(categoriesMap[newCategory]?.subcategories || {}).map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -666,9 +1076,32 @@ export default function AdminPanel({
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase text-gray-500">Material/Weave Info</label>
                   <input
+                    required
                     type="text"
                     value={newMaterial}
                     onChange={(e) => setNewMaterial(e.target.value)}
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Tags (comma separated)</label>
+                  <input
+                    required
+                    type="text"
+                    value={newTags}
+                    onChange={(e) => setNewTags(e.target.value)}
+                    placeholder="e.g. NewArrival, Under499"
+                    className="w-full brutal-input text-xs font-bold focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500">Sizes (comma separated)</label>
+                  <input
+                    required
+                    type="text"
+                    value={newSizes}
+                    onChange={(e) => setNewSizes(e.target.value)}
+                    placeholder="e.g. S, M, L, XL"
                     className="w-full brutal-input text-xs font-bold focus:outline-none"
                   />
                 </div>
@@ -676,6 +1109,7 @@ export default function AdminPanel({
               <div className="space-y-1">
                 <label className="text-[10px] font-black uppercase text-gray-500">Product Description</label>
                 <textarea
+                  required
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   rows={2}
@@ -696,13 +1130,16 @@ export default function AdminPanel({
                   onClick={() => {
                     setEditingProductId(null);
                     setNewName('');
-                    setNewCategory('Men');
-                    setNewPrice('299');
-                    setNewOrigPrice('699');
+                    setNewCategory(Object.keys(categoriesMap)[0] || '');
+                    setNewSubcategory('');
+                    setNewPrice('');
+                    setNewOrigPrice('');
                     setNewImage('');
                     setNewImages([]);
-                    setNewDesc('Premium fabric perfect for active styling.');
-                    setNewMaterial('100% Breathable Cotton');
+                    setNewDesc('');
+                    setNewMaterial('');
+                    setNewTags('');
+                    setNewSizes('');
                   }}
                   className="w-full mt-2 p-3 border-2 border-black bg-white text-black font-black uppercase tracking-wider text-xs hover:bg-gray-100"
                 >
@@ -719,7 +1156,14 @@ export default function AdminPanel({
                 {products.map((p) => (
                   <div key={p.id} className="p-3 border-2 border-black flex gap-3 bg-gray-50 dark:bg-slate-900 items-center justify-between">
                     <div className="flex gap-3 items-center min-w-0">
-                      <img src={p.image} alt={p.name} className="w-12 h-12 object-cover border-2 border-black shrink-0" />
+                      <img 
+                        src={p.image || 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400'} 
+                        alt={p.name} 
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&q=80&w=400';
+                        }}
+                        className="w-12 h-12 object-cover border-2 border-black shrink-0" 
+                      />
                       <div className="text-left min-w-0">
                         <p className="text-xs font-black uppercase truncate text-black dark:text-gray-100">{p.name}</p>
                         <p className="text-[10px] font-bold text-gray-400 mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -743,13 +1187,16 @@ export default function AdminPanel({
                           if (prod) {
                             setEditingProductId(prod.id);
                             setNewName(prod.name);
-                            setNewCategory(prod.category as any);
+                            setNewCategory(prod.category);
+                            setNewSubcategory(prod.subCategory || '');
                             setNewPrice(prod.price.toString());
                             setNewOrigPrice((prod.originalPrice || '').toString());
                             setNewImage(prod.image);
                             setNewImages(prod.images || []);
                             setNewDesc(prod.description);
-                            setNewMaterial(prod.material);
+                            setNewMaterial(prod.material || '');
+                            setNewTags((prod.tags || []).join(', '));
+                            setNewSizes((prod.size || []).join(', '));
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }
                         }}
@@ -1034,7 +1481,14 @@ export default function AdminPanel({
                   <div key={story.id} className={`p-4 border-2 border-black flex gap-3 items-center justify-between ${story.color} text-black`}>
                     <div className="flex gap-3 items-center min-w-0">
                       {story.image && (
-                        <img src={story.image} alt={story.name} className="w-12 h-12 object-cover border-2 border-black shrink-0" />
+                        <img 
+                          src={story.image} 
+                          alt={story.name} 
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&q=80&w=400';
+                          }}
+                          className="w-12 h-12 object-cover border-2 border-black shrink-0" 
+                        />
                       )}
                       <div className="text-left min-w-0">
                         <p className="text-xs font-black uppercase truncate">{story.name}</p>
@@ -1055,6 +1509,254 @@ export default function AdminPanel({
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* SECTION 7: GALLERY CONTENT */}
+        {activeSection === 'gallery' && (
+          <div className="space-y-6 animate-fade-in text-left">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-3xl font-black uppercase tracking-tight mb-2">Style Diaries Gallery</h2>
+                <p className="text-sm font-bold text-gray-500">Customize the aesthetic grid layout on the shop page.</p>
+              </div>
+              <button 
+                onClick={() => {
+                  const newGallery: GalleryConfig = {
+                    id: Date.now().toString(),
+                    layoutStyle: 'bento',
+                    title: "",
+                    subtitle: "",
+                    imageLeft: "",
+                    imageCenter: "",
+                    imageRight: "",
+                    ctaTitle: "",
+                    ctaSubtext: "",
+                    ctaButtonText: "",
+                    visibility: "shop"
+                  };
+                  setGalleryConfigs([...galleryConfigs, newGallery]);
+                }}
+                className="brutal-btn py-2 px-4 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Add Section
+              </button>
+            </div>
+            
+            {galleryConfigs.length === 0 ? (
+               <div className="brutal-card-no-hover p-12 text-center bg-white dark:bg-[#1a1a1a] border-3 border-black space-y-4">
+                  <h4 className="text-xl font-black uppercase">No Gallery Sections</h4>
+                  <p className="text-sm font-bold text-gray-500">Create a new section to start displaying galleries on your store.</p>
+               </div>
+            ) : (
+              galleryConfigs.map((config, index) => (
+                <div key={config.id} className="brutal-card-no-hover p-6 bg-white dark:bg-[#1a1a1a] border-3 border-black mb-6">
+                  <div className="flex justify-between items-center mb-4 border-b-2 border-black pb-2">
+                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 font-mono">Gallery Content #{index + 1}</h4>
+                    <button 
+                      onClick={() => {
+                         setConfirmModal({
+                           isOpen: true,
+                           message: 'Are you sure you want to delete this gallery section?',
+                           onConfirm: () => {
+                             setGalleryConfigs(galleryConfigs.filter(g => g.id !== config.id));
+                             triggerAlert('Gallery section deleted');
+                           }
+                         });
+                      }}
+                      className="p-2 border-2 border-black bg-[#FCE7F3] text-black hover:bg-[#FF4D4F] hover:text-white transition-all shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="border-b-2 border-black pb-4 mb-4">
+                      <label className="text-xs font-black uppercase tracking-wider block mb-3">Gallery Style</label>
+                      <div className="flex gap-4">
+                        {['bento', 'classic'].map((styleOpt) => (
+                          <label key={styleOpt} className="flex items-center gap-2 cursor-pointer text-sm font-bold uppercase">
+                            <input 
+                              type="radio" 
+                              name={`galleryStyle-${config.id}`}
+                              value={styleOpt} 
+                              checked={config.layoutStyle === styleOpt} 
+                              onChange={(e) => {
+                                const newConfigs = [...galleryConfigs];
+                                newConfigs[index].layoutStyle = e.target.value as any;
+                                setGalleryConfigs(newConfigs);
+                              }}
+                              className="accent-black w-4 h-4 cursor-pointer"
+                            />
+                            {styleOpt === 'bento' ? 'Bento Box (Asymmetrical)' : 'Classic (3 Columns)'}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">Main Heading</label>
+                        <input 
+                          type="text" 
+                          value={config.title} 
+                          onChange={(e) => {
+                            const newConfigs = [...galleryConfigs];
+                            newConfigs[index].title = e.target.value;
+                            setGalleryConfigs(newConfigs);
+                          }}
+                          placeholder="e.g. STYLE DIARIES"
+                          className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">Sub Heading</label>
+                        <input 
+                          type="text" 
+                          value={config.subtitle} 
+                          onChange={(e) => {
+                            const newConfigs = [...galleryConfigs];
+                            newConfigs[index].subtitle = e.target.value;
+                            setGalleryConfigs(newConfigs);
+                          }}
+                          placeholder="e.g. Real Fashion • Real People"
+                          className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t-2 border-black pt-4">
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">Left Image</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={config.imageLeft} 
+                            onChange={(e) => {
+                              const newConfigs = [...galleryConfigs];
+                              newConfigs[index].imageLeft = e.target.value;
+                              setGalleryConfigs(newConfigs);
+                            }}
+                            placeholder="Image URL"
+                            className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                          />
+                          <label className="p-2 border-2 border-black bg-[#FFD400] text-black cursor-pointer hover:bg-black hover:text-white transition-colors shrink-0" title="Upload Image">
+                            <Upload className="w-4 h-4" />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleGalleryUpload(e, index, 'imageLeft')} />
+                          </label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">Center Image</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={config.imageCenter} 
+                            onChange={(e) => {
+                              const newConfigs = [...galleryConfigs];
+                              newConfigs[index].imageCenter = e.target.value;
+                              setGalleryConfigs(newConfigs);
+                            }}
+                            placeholder="Image URL"
+                            className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                          />
+                          <label className="p-2 border-2 border-black bg-[#FFD400] text-black cursor-pointer hover:bg-black hover:text-white transition-colors shrink-0" title="Upload Image">
+                            <Upload className="w-4 h-4" />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleGalleryUpload(e, index, 'imageCenter')} />
+                          </label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">Right Image</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={config.imageRight} 
+                            onChange={(e) => {
+                              const newConfigs = [...galleryConfigs];
+                              newConfigs[index].imageRight = e.target.value;
+                              setGalleryConfigs(newConfigs);
+                            }}
+                            placeholder="Image URL"
+                            className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                          />
+                          <label className="p-2 border-2 border-black bg-[#FFD400] text-black cursor-pointer hover:bg-black hover:text-white transition-colors shrink-0" title="Upload Image">
+                            <Upload className="w-4 h-4" />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleGalleryUpload(e, index, 'imageRight')} />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t-2 border-black pt-4">
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">CTA Block Title</label>
+                        <input 
+                          type="text" 
+                          value={config.ctaTitle} 
+                          onChange={(e) => {
+                            const newConfigs = [...galleryConfigs];
+                            newConfigs[index].ctaTitle = e.target.value;
+                            setGalleryConfigs(newConfigs);
+                          }}
+                          placeholder="Use \n for new lines"
+                          className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">CTA Subtext</label>
+                        <input 
+                          type="text" 
+                          value={config.ctaSubtext} 
+                          onChange={(e) => {
+                            const newConfigs = [...galleryConfigs];
+                            newConfigs[index].ctaSubtext = e.target.value;
+                            setGalleryConfigs(newConfigs);
+                          }}
+                          className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase tracking-wider block mb-1">CTA Button Text</label>
+                        <input 
+                          type="text" 
+                          value={config.ctaButtonText} 
+                          onChange={(e) => {
+                            const newConfigs = [...galleryConfigs];
+                            newConfigs[index].ctaButtonText = e.target.value;
+                            setGalleryConfigs(newConfigs);
+                          }}
+                          className="w-full p-2 border-2 border-black bg-[#f0f0f0] dark:bg-[#2d2d2d] focus:bg-white text-xs font-bold font-mono outline-none" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t-2 border-black pt-4">
+                      <label className="text-xs font-black uppercase tracking-wider block mb-3">Display Section On</label>
+                      <div className="flex flex-wrap gap-6">
+                        {['home', 'shop', 'regional'].map((opt) => (
+                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm font-bold uppercase">
+                            <input 
+                              type="radio" 
+                              name={`galleryVisibility-${config.id}`}
+                              value={opt} 
+                              checked={config.visibility === opt} 
+                              onChange={(e) => {
+                                const newConfigs = [...galleryConfigs];
+                                newConfigs[index].visibility = e.target.value as any;
+                                setGalleryConfigs(newConfigs);
+                              }}
+                              className="accent-black w-4 h-4 cursor-pointer"
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

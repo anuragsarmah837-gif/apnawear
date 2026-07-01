@@ -1,7 +1,7 @@
 export interface Product {
   id: string;
   name: string;
-  category: 'Men' | 'Women' | 'Kids' | 'Regional';
+  category: string;
   subCategory?: string;
   price: number;
   originalPrice: number;
@@ -93,4 +93,18 @@ export interface RegionalStory {
   borderCol: string;
   region: string;
   image?: string;
+}
+
+export interface GalleryConfig {
+  id: string;
+  layoutStyle: 'bento' | 'classic';
+  title: string;
+  subtitle: string;
+  imageLeft: string;
+  imageCenter: string;
+  imageRight: string;
+  ctaTitle: string;
+  ctaSubtext: string;
+  ctaButtonText: string;
+  visibility: 'home' | 'shop' | 'regional';
 }

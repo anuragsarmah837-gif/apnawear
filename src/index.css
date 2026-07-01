@@ -289,3 +289,16 @@ body {
 .dark .brutal-shadow-lg {
   box-shadow: 12px 12px 0px #FFFFFF;
 }
+
+@keyframes marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
